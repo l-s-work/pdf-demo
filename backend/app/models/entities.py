@@ -56,3 +56,19 @@ class PdfHighlightHit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     document: Mapped['PdfDocument'] = relationship(back_populates='hits')
+
+
+# PDF 上传提取任务表。
+class PdfIngestJob(Base):
+    __tablename__ = 'pdf_ingest_jobs'
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pdf_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), index=True, nullable=False, default='pending')
+    request_payload: Mapped[str] = mapped_column(String, nullable=False)
+    result_payload: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

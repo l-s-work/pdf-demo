@@ -1,6 +1,13 @@
 from .common import ApiResponse, PaginationData
-from .hit import HighlightHitItem, HighlightHitPage
-from .ingest import IngestKeywordSummary, IngestRequest, IngestUploadResult
+from .hit import HighlightHitItem, HighlightHitPage, HighlightRectItem
+from .ingest import (
+    IngestJobCreateResult,
+    IngestJobResultItem,
+    IngestJobStatusResult,
+    IngestRequest,
+    ManualHighlightBatchRequest,
+    ManualHighlightInputItem
+)
 from .pdf import PdfMetaData, PdfPageSizeItem
 
 __all__ = [
@@ -8,9 +15,13 @@ __all__ = [
     'PaginationData',
     'HighlightHitItem',
     'HighlightHitPage',
+    'HighlightRectItem',
     'IngestRequest',
-    'IngestKeywordSummary',
-    'IngestUploadResult',
+    'ManualHighlightInputItem',
+    'ManualHighlightBatchRequest',
+    'IngestJobCreateResult',
+    'IngestJobResultItem',
+    'IngestJobStatusResult',
     'PdfMetaData',
     'PdfPageSizeItem'
 ]

@@ -5,6 +5,7 @@ from app.api import hits_router, pdf_file_router, pdf_ingest_router, pdf_meta_ro
 from app.core.database import SessionLocal, engine
 from app.models import Base
 from app.services.bootstrap_service import bootstrap_demo_data
+from app.services.ingest_job_service import recover_unfinished_ingest_jobs
 
 app = FastAPI(title='PDF 高亮定位后端', version='0.1.0')
 
@@ -27,6 +28,8 @@ async def on_startup() -> None:
     # 启动时自动建表并注入演示数据。
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+
+    await recover_unfinished_ingest_jobs()
 
     async with SessionLocal() as session:
         await bootstrap_demo_data(session)

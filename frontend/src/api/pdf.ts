@@ -1,5 +1,10 @@
 import { requestClient, type RequestOptions } from './http';
-import type { ApiResponse, PdfMetaData, PdfUploadResult } from '../types/pdf';
+import type {
+  ApiResponse,
+  ManualHighlightInputItem,
+  PdfMetaData,
+  PdfUploadJobCreateResult
+} from '../types/pdf';
 
 // 按文档 ID 获取轻量索引，用于计算每页尺寸和虚拟滚动。
 export async function fetchPdfMeta(pdfId: string, options?: RequestOptions): Promise<PdfMetaData> {
@@ -8,12 +13,33 @@ export async function fetchPdfMeta(pdfId: string, options?: RequestOptions): Pro
 }
 
 
-// 上传 PDF 并触发后端提取命中结果。
-export async function uploadPdf(file: File, keywords: string, options?: RequestOptions<FormData>): Promise<PdfUploadResult> {
+// 创建 PDF 上传任务，并立即返回任务 ID。
+export async function createPdfUploadJob(
+  file: File,
+  items: ManualHighlightInputItem[] = [],
+  options?: RequestOptions<FormData>
+): Promise<PdfUploadJobCreateResult> {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('keywords', keywords);
+  if (items.length > 0) {
+    formData.append('items', JSON.stringify(items));
+  }
 
-  const response = await requestClient.post<ApiResponse<PdfUploadResult>, FormData>('/api/pdf/upload', formData, options);
+  const response = await requestClient.post<ApiResponse<PdfUploadJobCreateResult>, FormData>('/api/pdf/upload', formData, options);
+  return response.data;
+}
+
+
+// 给已上传文档追加手工页码关键词测试项。
+export async function appendManualHits(
+  pdfId: string,
+  items: ManualHighlightInputItem[],
+  options?: RequestOptions<{ items: ManualHighlightInputItem[] }>
+): Promise<PdfUploadJobCreateResult> {
+  const response = await requestClient.post<ApiResponse<PdfUploadJobCreateResult>, { items: ManualHighlightInputItem[] }>(
+    `/api/pdf/${pdfId}/manual-hits`,
+    { items },
+    options
+  );
   return response.data;
 }

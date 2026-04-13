@@ -26,6 +26,41 @@ export default function PdfViewerPage() {
     staleTime: 1000 * 60 * 10
   });
 
+  const activeHits = useMemo(() => {
+    if (!hit) {
+      return [];
+    }
+
+    const relatedHits = (hit.relatedRects ?? [])
+      .filter((item) => item.pageNum > 0 && item.w > 0 && item.h > 0)
+      .map((item, index) => ({
+        ...hit,
+        hitId: `${hit.hitId}_rect_${index}`,
+        pageNum: item.pageNum,
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h
+      }));
+
+    if (relatedHits.length > 0) {
+      return relatedHits;
+    }
+
+    if (hit.pageNum > 0 && hit.w > 0 && hit.h > 0) {
+      return [hit];
+    }
+
+    return [];
+  }, [hit]);
+
+  const targetPageNum = useMemo(() => {
+    if (activeHits.length > 0) {
+      return activeHits[0].pageNum;
+    }
+    return 1;
+  }, [activeHits]);
+
   const previewUrl = useMemo(() => buildPreviewUrl(pdfId, hit), [hit, pdfId]);
 
   if (!pdfId) {
@@ -49,7 +84,7 @@ export default function PdfViewerPage() {
             <Typography.Text>当前缩放：{scale.toFixed(2)}x</Typography.Text>
             {hit ? (
               <Typography.Text type="secondary">
-                目标：第 {hit.pageNum} 页 / 关键词：{hit.keyword}
+                目标：第 {targetPageNum} 页 / 关键词：{hit.keyword}
               </Typography.Text>
             ) : null}
           </Space>
@@ -59,7 +94,7 @@ export default function PdfViewerPage() {
       <StyledViewerWrapper>
         {isLoading ? <Spin tip="正在加载文档索引..." /> : null}
         {error ? <Alert type="error" message={getRequestErrorMessage(error, '加载 meta 失败')} showIcon /> : null}
-        {meta ? <PdfVirtualViewer pdfId={pdfId} meta={meta} pdfUrl={previewUrl} activeHit={hit} /> : null}
+        {meta ? <PdfVirtualViewer pdfId={pdfId} meta={meta} pdfUrl={previewUrl} activeHits={activeHits} targetPageNum={targetPageNum} /> : null}
       </StyledViewerWrapper>
     </StyledContainer>
   );

@@ -5,7 +5,8 @@ export interface PdfVirtualViewerProps {
   pdfId: string;
   pdfUrl: string;
   meta: PdfMetaData;
-  activeHit?: HighlightHitItem;
+  activeHits?: HighlightHitItem[];
+  targetPageNum?: number;
 }
 
 // 单页 Canvas 组件属性。
@@ -13,5 +14,5 @@ export interface PdfPageCanvasProps {
   pageNum: number;
   scale: number;
   warmupPage: (pageNum: number) => Promise<import('pdfjs-dist/types/src/display/api').PDFPageProxy | null>;
-  activeHit?: HighlightHitItem;
+  activeHits?: HighlightHitItem[];
 }

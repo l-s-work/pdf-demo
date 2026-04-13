@@ -36,6 +36,24 @@ export const StyledUploadField = styled.div`
   gap: 8px;
 `;
 
+// 手工测试项列表样式。
+export const StyledManualItemList = styled.div`
+  display: grid;
+  gap: 12px;
+`;
+
+// 单条手工测试项录入行样式。
+export const StyledManualItemRow = styled.div`
+  display: grid;
+  grid-template-columns: 140px minmax(240px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+
+  @media (max-width: 960px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
 // 原生文件选择输入样式。
 export const StyledFileInput = styled.input`
   width: 100%;

@@ -1,24 +1,38 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Descriptions, Input, Space, Table, Typography } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Alert, Button, Card, Input, InputNumber, Space, Table, Typography } from 'antd';
 import { getRequestErrorMessage } from '../../api/http';
 import { fetchHighlightHits } from '../../api/hits';
-import { uploadPdf } from '../../api/pdf';
-import type { HighlightHitItem, PdfUploadKeywordSummary } from '../../types/pdf';
+import { appendManualHits, createPdfUploadJob } from '../../api/pdf';
+import type { HighlightHitItem, ManualHighlightInputItem, PdfUploadJobCreateResult } from '../../types/pdf';
 import {
   StyledContainer,
   StyledFileInput,
   StyledHeader,
+  StyledManualItemList,
+  StyledManualItemRow,
   StyledSectionStack,
   StyledUploadField,
-  StyledUploadGrid,
-  StyledUploadResult
+  StyledUploadGrid
 } from './styles';
 import { createHitColumns } from './tableColumns';
 
-// 命中列表页：负责筛选、分页查询和跳转至预览页。
+interface ManualHighlightDraftItem {
+  id: string;
+  pageNum: number;
+  keyword: string;
+}
+
+function createDraftItem(): ManualHighlightDraftItem {
+  return {
+    id: `draft_${Math.random().toString(36).slice(2, 10)}`,
+    pageNum: 1,
+    keyword: ''
+  };
+}
+
+// 命中列表页：支持上传 PDF、追加手工测试项，并在任务处理中自动轮询列表。
 export default function HitListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -27,63 +41,101 @@ export default function HitListPage() {
   const [keyword, setKeyword] = useState('');
   const [pdfId, setPdfId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadKeywords, setUploadKeywords] = useState('');
-  const [uploadLocalError, setUploadLocalError] = useState('');
+  const [manualItems, setManualItems] = useState<ManualHighlightDraftItem[]>([createDraftItem()]);
+  const [localError, setLocalError] = useState('');
+  const [lastSubmittedJob, setLastSubmittedJob] = useState<PdfUploadJobCreateResult | null>(null);
 
-  // 查询分页命中数据。
+  // 查询分页命中数据；当后台任务未结束时自动轮询，避免预览时拿不到定位信息。
   const { data, isLoading, error } = useQuery({
     queryKey: ['highlight-hits', page, pageSize, keyword, pdfId],
     queryFn: ({ signal }) =>
-      fetchHighlightHits({
-        page,
-        pageSize,
-        keyword: keyword || undefined,
-        pdfId: pdfId || undefined
-      }, { signal })
+      fetchHighlightHits(
+        {
+          page,
+          pageSize,
+          keyword: keyword || undefined,
+          pdfId: pdfId || undefined
+        },
+        { signal }
+      ),
+    refetchInterval: (query) => (query.state.data?.hasPendingJobs ? 1500 : false)
   });
 
-  // 通过独立工厂方法生成列配置。
   const columns = useMemo(() => createHitColumns(navigate), [navigate]);
 
-  // 上传后展示关键词与页码的汇总表格。
-  const uploadSummaryColumns = useMemo<ColumnsType<PdfUploadKeywordSummary>>(
-    () => [
-      { title: '关键词', dataIndex: 'keyword', key: 'keyword', width: 220 },
-      {
-        title: '命中页码',
-        key: 'pageNums',
-        render: (_, record) => (record.pageNums.length > 0 ? record.pageNums.join(', ') : '未命中')
-      },
-      { title: '命中次数', dataIndex: 'hitCount', key: 'hitCount', width: 120 }
-    ],
-    []
-  );
-
-  // 处理浏览器上传，并在成功后自动刷新下方命中列表。
   const uploadMutation = useMutation({
-    mutationFn: ({ file, keywordsText }: { file: File; keywordsText: string }) => uploadPdf(file, keywordsText),
+    mutationFn: ({ file }: { file: File }) => createPdfUploadJob(file),
     onSuccess: (result) => {
-      setPage(1);
       setPdfId(result.pdfId);
-      setKeyword('');
-      setUploadLocalError('');
+      setPage(1);
+      setLocalError('');
+      setLastSubmittedJob(result);
       void queryClient.invalidateQueries({ queryKey: ['highlight-hits'] });
     }
   });
 
-  const uploadErrorMessage = uploadLocalError || (uploadMutation.error ? getRequestErrorMessage(uploadMutation.error, '上传 PDF 失败') : '');
+  const appendMutation = useMutation({
+    mutationFn: ({ targetPdfId, items }: { targetPdfId: string; items: ManualHighlightInputItem[] }) =>
+      appendManualHits(targetPdfId, items),
+    onSuccess: (result) => {
+      setPage(1);
+      setKeyword('');
+      setLocalError('');
+      setLastSubmittedJob(result);
+      void queryClient.invalidateQueries({ queryKey: ['highlight-hits'] });
+    }
+  });
 
-  function handleUpload() {
+  const errorMessage =
+    localError
+    || (uploadMutation.error ? getRequestErrorMessage(uploadMutation.error, '上传 PDF 失败') : '')
+    || (appendMutation.error ? getRequestErrorMessage(appendMutation.error, '新增手工测试项失败') : '');
+
+  function updateManualItem(itemId: string, patch: Partial<ManualHighlightDraftItem>) {
+    setManualItems((currentItems) => currentItems.map((item) => (item.id === itemId ? { ...item, ...patch } : item)));
+  }
+
+  function normalizeManualItems(): ManualHighlightInputItem[] {
+    return manualItems
+      .map<ManualHighlightInputItem | null>((item) => {
+        const normalizedKeyword = item.keyword.trim();
+        if (!normalizedKeyword) {
+          return null;
+        }
+
+        return {
+          pageNum: Math.max(1, item.pageNum || 1),
+          keyword: normalizedKeyword
+        };
+      })
+      .filter((item): item is ManualHighlightInputItem => Boolean(item));
+  }
+
+  function handleUploadPdf() {
     if (!selectedFile) {
-      setUploadLocalError('请先选择一个 PDF 文件');
+      setLocalError('请先选择一个 PDF 文件');
       return;
     }
 
-    setUploadLocalError('');
-    uploadMutation.mutate({
-      file: selectedFile,
-      keywordsText: uploadKeywords
-    });
+    setLocalError('');
+    uploadMutation.mutate({ file: selectedFile });
+  }
+
+  function handleAppendManualItems() {
+    const targetPdfId = pdfId.trim();
+    if (!targetPdfId) {
+      setLocalError('请先上传 PDF 或填写目标文档ID');
+      return;
+    }
+
+    const items = normalizeManualItems();
+    if (items.length === 0) {
+      setLocalError('请至少填写一条“页码 + 关键词”测试项');
+      return;
+    }
+
+    setLocalError('');
+    appendMutation.mutate({ targetPdfId, items });
   }
 
   return (
@@ -91,90 +143,92 @@ export default function HitListPage() {
       <StyledSectionStack>
         <Card>
           <StyledHeader>
-            <Typography.Title level={4}>上传测试 PDF</Typography.Title>
+            <Typography.Title level={4}>上传与手工测试</Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              选择 PDF 后输入待匹配的关键词，支持换行、逗号或中文逗号分隔；留空时后端默认按 `test` 提取。
+              先上传 PDF 获取文档ID，再反复追加“页码 + 关键词”测试项；列表会在任务未结束时自动轮询刷新。
             </Typography.Paragraph>
           </StyledHeader>
 
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            {uploadErrorMessage ? <Alert type="error" showIcon message={uploadErrorMessage} /> : null}
+            {errorMessage ? <Alert type="error" showIcon message={errorMessage} /> : null}
+            {lastSubmittedJob ? (
+              <Alert
+                type="info"
+                showIcon
+                message={`任务已提交：${lastSubmittedJob.jobId}`}
+                description={`文档ID：${lastSubmittedJob.pdfId}。处理中期间列表会自动轮询更新。`}
+              />
+            ) : null}
 
             <StyledUploadGrid>
               <StyledUploadField>
-                <Typography.Text strong>PDF 文件</Typography.Text>
+                <Typography.Text strong>上传 PDF</Typography.Text>
                 <StyledFileInput
                   type="file"
                   accept="application/pdf,.pdf"
                   onChange={(event) => {
                     setSelectedFile(event.target.files?.[0] ?? null);
-                    setUploadLocalError('');
+                    setLocalError('');
                   }}
                 />
-                <Typography.Text type="secondary">
-                  {selectedFile ? `当前文件：${selectedFile.name}` : '请选择一个本地 PDF 文件'}
-                </Typography.Text>
+                <Space wrap>
+                  <Button type="primary" loading={uploadMutation.isPending} onClick={handleUploadPdf}>
+                    上传文件
+                  </Button>
+                  <Typography.Text type="secondary">
+                    {selectedFile ? `当前文件：${selectedFile.name}` : '请选择一个本地 PDF 文件'}
+                  </Typography.Text>
+                </Space>
               </StyledUploadField>
 
               <StyledUploadField>
-                <Typography.Text strong>关键词</Typography.Text>
-                <Input.TextArea
-                  rows={4}
-                  value={uploadKeywords}
-                  onChange={(event) => setUploadKeywords(event.target.value)}
-                  placeholder={'每行一个关键词，或用逗号分隔\n例如：test\nOpenAI\n合同编号'}
+                <Typography.Text strong>追加手工测试项</Typography.Text>
+                <Input
+                  value={pdfId}
+                  onChange={(event) => setPdfId(event.target.value)}
+                  placeholder="目标文档ID（上传成功会自动填入）"
+                  style={{ width: '100%' }}
                 />
+                <StyledManualItemList>
+                  {manualItems.map((item, index) => (
+                    <StyledManualItemRow key={item.id}>
+                      <InputNumber
+                        min={1}
+                        value={item.pageNum}
+                        onChange={(value) => updateManualItem(item.id, { pageNum: Number(value || 1) })}
+                        placeholder="页码"
+                        style={{ width: '100%' }}
+                      />
+                      <Input
+                        value={item.keyword}
+                        onChange={(event) => updateManualItem(item.id, { keyword: event.target.value })}
+                        placeholder={`关键词 ${index + 1}`}
+                      />
+                      <Button
+                        danger
+                        disabled={manualItems.length === 1}
+                        onClick={() => setManualItems((items) => items.filter((currentItem) => currentItem.id !== item.id))}
+                      >
+                        删除
+                      </Button>
+                    </StyledManualItemRow>
+                  ))}
+                </StyledManualItemList>
+                <Space wrap>
+                  <Button onClick={() => setManualItems((items) => [...items, createDraftItem()])}>新增一条</Button>
+                  <Button type="primary" loading={appendMutation.isPending} onClick={handleAppendManualItems}>
+                    提交测试项
+                  </Button>
+                </Space>
               </StyledUploadField>
             </StyledUploadGrid>
-
-            <Space wrap>
-              <Button type="primary" loading={uploadMutation.isPending} onClick={handleUpload}>
-                上传并提取
-              </Button>
-              <Typography.Text type="secondary">
-                上传成功后，下方命中列表会自动切换到当前文档。
-              </Typography.Text>
-            </Space>
-
-            {uploadMutation.data ? (
-              <StyledUploadResult>
-                <Alert
-                  type={uploadMutation.data.totalHits > 0 ? 'success' : 'warning'}
-                  showIcon
-                  message={
-                    uploadMutation.data.totalHits > 0
-                      ? '上传完成，已生成测试命中结果'
-                      : '上传完成，但当前关键词没有匹配到命中结果'
-                  }
-                />
-
-                <Descriptions
-                  bordered
-                  size="small"
-                  column={{ xs: 1, sm: 2, lg: 4 }}
-                  items={[
-                    { key: 'fileName', label: '文件名', children: uploadMutation.data.fileName },
-                    { key: 'pdfId', label: '文档ID', children: uploadMutation.data.pdfId },
-                    { key: 'totalPages', label: '总页数', children: uploadMutation.data.totalPages },
-                    { key: 'totalHits', label: '命中总数', children: uploadMutation.data.totalHits }
-                  ]}
-                />
-
-                <Table<PdfUploadKeywordSummary>
-                  rowKey="keyword"
-                  columns={uploadSummaryColumns}
-                  dataSource={uploadMutation.data.keywordSummaries}
-                  pagination={false}
-                  size="small"
-                />
-              </StyledUploadResult>
-            ) : null}
           </Space>
         </Card>
 
         <Card>
           <StyledHeader>
-            <Typography.Title level={4}>PDF 高亮命中列表（per-hit）</Typography.Title>
+            <Typography.Title level={4}>PDF 高亮命中列表</Typography.Title>
+            {data?.hasPendingJobs ? <Alert type="info" showIcon message="检测到仍有命中任务处理中，列表正在自动刷新..." style={{ marginBottom: 12 }} /> : null}
             {error ? <Alert type="error" showIcon message={getRequestErrorMessage(error, '加载命中列表失败')} style={{ marginBottom: 12 }} /> : null}
             <Space wrap>
               <Input
@@ -189,14 +243,7 @@ export default function HitListPage() {
                 placeholder="按关键词过滤"
                 style={{ width: 220 }}
               />
-              <Button
-                onClick={() => {
-                  // 切换筛选条件时回到第一页。
-                  setPage(1);
-                }}
-              >
-                重新查询
-              </Button>
+              <Button onClick={() => setPage(1)}>重新查询</Button>
             </Space>
           </StyledHeader>
 
@@ -211,7 +258,6 @@ export default function HitListPage() {
               total: data?.total ?? 0,
               showSizeChanger: true,
               onChange: (nextPage, nextPageSize) => {
-                // 处理分页变化。
                 setPage(nextPage);
                 setPageSize(nextPageSize);
               }

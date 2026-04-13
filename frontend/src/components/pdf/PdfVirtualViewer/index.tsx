@@ -9,15 +9,16 @@ import type { PdfVirtualViewerProps } from './types';
 import PdfPageCanvas from './PdfPageCanvas';
 
 // PDF 虚拟页面组件：支持目标页优先打开，并预热附近页的数据。
-export default function PdfVirtualViewer({ pdfId, pdfUrl, meta, activeHit }: PdfVirtualViewerProps) {
+export default function PdfVirtualViewer({ pdfId, pdfUrl, meta, activeHits, targetPageNum }: PdfVirtualViewerProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const { pdfDoc, isLoading, error, warmupPage } = usePdfDocument(pdfId, pdfUrl);
   const { scale } = useViewerStore();
+  const fallbackTargetPageNum = targetPageNum ?? activeHits?.[0]?.pageNum;
   const rowVirtualizer = usePdfVirtualizer({
     parentRef,
     meta,
     scale,
-    targetPageNum: activeHit?.pageNum
+    targetPageNum: fallbackTargetPageNum
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
@@ -25,7 +26,7 @@ export default function PdfVirtualViewer({ pdfId, pdfUrl, meta, activeHit }: Pdf
   const pagesToWarmup = useMemo(() => {
     const pageSet = new Set<number>();
 
-    if (activeHit?.pageNum) {
+    for (const activeHit of activeHits ?? []) {
       for (let page = activeHit.pageNum - 2; page <= activeHit.pageNum + 2; page += 1) {
         if (page >= 1 && page <= meta.totalPages) {
           pageSet.add(page);
@@ -43,7 +44,7 @@ export default function PdfVirtualViewer({ pdfId, pdfUrl, meta, activeHit }: Pdf
     }
 
     return Array.from(pageSet).sort((left, right) => left - right);
-  }, [activeHit?.pageNum, meta.totalPages, virtualItems]);
+  }, [activeHits, meta.totalPages, virtualItems]);
 
   useEffect(() => {
     if (!pdfDoc) {
@@ -72,7 +73,7 @@ export default function PdfVirtualViewer({ pdfId, pdfUrl, meta, activeHit }: Pdf
                     pageNum={pageNum}
                     scale={scale}
                     warmupPage={warmupPage}
-                    activeHit={activeHit}
+                    activeHits={activeHits}
                   />
                 ) : null}
               </StyledPageSlot>
