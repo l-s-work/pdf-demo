@@ -5,6 +5,7 @@ export interface PdfVirtualViewerProps {
   pdfId: string;
   pdfUrl: string;
   meta: PdfMetaData;
+  viewerWidth?: number;
   activeHits?: HighlightHitItem[];
   targetPageNum?: number;
 }

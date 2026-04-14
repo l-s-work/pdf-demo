@@ -1,19 +1,21 @@
-import { useMemo, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, Empty, Space, Spin, Typography } from 'antd';
-import { getRequestErrorMessage } from '../../api/http';
-import { fetchPdfMeta } from '../../api/pdf';
-import PdfVirtualViewer from '../../components/pdf/PdfVirtualViewer';
-import { useViewerStore } from '../../store/viewerStore';
-import { buildPreviewUrl } from '../../utils/pdf/buildPreviewUrl';
-import { pdfDocumentManager } from '../../utils/pdf/pdfDocumentManager';
-import { StyledContainer, StyledViewerWrapper } from './styles';
-import type { PdfViewerLocationState } from './types';
+import { useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Alert, Button, Card, Empty, Space, Spin, Typography } from "antd";
+import { getRequestErrorMessage } from "../../api/http";
+import { fetchPdfMeta } from "../../api/pdf";
+import PdfVirtualViewer from "../../components/pdf/PdfVirtualViewer";
+import { useViewerStore } from "../../store/viewerStore";
+import { buildPreviewUrl } from "../../utils/pdf/buildPreviewUrl";
+import { pdfDocumentManager } from "../../utils/pdf/pdfDocumentManager";
+import { StyledContainer, StyledViewerWrapper } from "./styles";
+import type { PdfViewerLocationState } from "./types";
 
 // PDF 预览页：负责读取 meta、控制缩放并渲染虚拟页面 Viewer。
 export default function PdfViewerPage() {
-  const { pdfId = '' } = useParams();
+  // 修改这个值即可快速调整外层 PDF 盒子宽度。
+  const VIEWER_BOX_WIDTH = 800;
+  const { pdfId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { currentPage } = useViewerStore();
@@ -23,11 +25,15 @@ export default function PdfViewerPage() {
   const [isColdReloading, setIsColdReloading] = useState(false);
 
   // 获取文档轻量索引，用于虚拟页面尺寸计算。
-  const { data: meta, isLoading, error } = useQuery({
-    queryKey: ['pdf-meta', pdfId],
+  const {
+    data: meta,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["pdf-meta", pdfId],
     queryFn: ({ signal }) => fetchPdfMeta(pdfId, { signal }),
     enabled: Boolean(pdfId),
-    staleTime: 1000 * 60 * 10
+    staleTime: 1000 * 60 * 10,
   });
 
   const activeHits = useMemo(() => {
@@ -44,7 +50,7 @@ export default function PdfViewerPage() {
         x: item.x,
         y: item.y,
         w: item.w,
-        h: item.h
+        h: item.h,
       }));
 
     if (relatedHits.length > 0) {
@@ -82,7 +88,10 @@ export default function PdfViewerPage() {
     return Math.min(Math.max(1, currentPage), meta.totalPages);
   }, [currentPage, meta]);
 
-  const previewUrl = useMemo(() => buildPreviewUrl(pdfId, hit, previewNonce), [hit, pdfId, previewNonce]);
+  const previewUrl = useMemo(
+    () => buildPreviewUrl(pdfId, hit, previewNonce),
+    [hit, pdfId, previewNonce],
+  );
 
   async function handleColdReload() {
     if (!pdfId) {
@@ -109,16 +118,18 @@ export default function PdfViewerPage() {
   return (
     <StyledContainer>
       <Card>
-        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+        <Space direction="vertical" size={8} style={{ width: "100%" }}>
           <Typography.Title level={4} style={{ margin: 0 }}>
             PDF 预览与高亮定位
           </Typography.Title>
           <Space>
-            <Button onClick={() => navigate('/hits')}>返回列表</Button>
+            <Button onClick={() => navigate("/hits")}>返回列表</Button>
             <Button loading={isColdReloading} onClick={handleColdReload}>
               冷启动重载
             </Button>
-            <Typography.Text type="secondary">预览来源：原始 PDF 文件（/api/pdf/{pdfId}/file）</Typography.Text>
+            <Typography.Text type="secondary">
+              预览来源：原始 PDF 文件（/api/pdf/{pdfId}/file）
+            </Typography.Text>
             {hit ? (
               <Typography.Text type="secondary">
                 目标：第 {safeTargetPageNum} 页 / 关键词：{hit.keyword}
@@ -130,18 +141,24 @@ export default function PdfViewerPage() {
 
       <StyledViewerWrapper>
         {isLoading ? <Spin tip="正在加载文档索引..." /> : null}
-        {error ? <Alert type="error" message={getRequestErrorMessage(error, '加载 meta 失败')} showIcon /> : null}
+        {error ? (
+          <Alert
+            type="error"
+            message={getRequestErrorMessage(error, "加载 meta 失败")}
+            showIcon
+          />
+        ) : null}
         {meta ? (
           <Typography.Text
             style={{
-              position: 'absolute',
+              position: "absolute",
               right: 16,
               top: 14,
               zIndex: 5,
-              background: 'rgba(17, 24, 39, 0.8)',
-              color: '#fff',
+              background: "rgba(17, 24, 39, 0.8)",
+              color: "#fff",
               borderRadius: 999,
-              padding: '2px 10px'
+              padding: "2px 10px",
             }}
           >
             第 {safeCurrentPageNum} / {meta.totalPages} 页
@@ -152,6 +169,7 @@ export default function PdfViewerPage() {
             pdfId={pdfId}
             meta={meta}
             pdfUrl={previewUrl}
+            viewerWidth={VIEWER_BOX_WIDTH}
             activeHits={activeHits}
             targetPageNum={safeTargetPageNum}
           />

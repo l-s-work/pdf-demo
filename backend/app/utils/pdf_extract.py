@@ -161,6 +161,64 @@ def merge_words_to_rect_segments(word_items: list[dict[str, float | int | str]])
     ]
 
 
+# 按关键词在拼接文本中的匹配区间，裁剪出“仅关键词子串”的矩形段。
+def build_rect_segments_from_match(
+    token_positions: list[dict[str, int | dict[str, float | int | str]]],
+    match_start: int,
+    match_end: int
+) -> list[dict[str, float | int]]:
+    matched_word_items: list[dict[str, float | int | str]] = []
+
+    for position in token_positions:
+        token_start = int(position['start'])
+        token_end = int(position['end'])
+        if token_end <= match_start or token_start >= match_end:
+            continue
+
+        word = dict(position['word'])
+        normalized_text = str(word['normalized_text'])
+        if not normalized_text:
+            continue
+
+        overlap_start = max(match_start, token_start)
+        overlap_end = min(match_end, token_end)
+        if overlap_end <= overlap_start:
+            continue
+
+        word_match_start = overlap_start - token_start
+        word_match_end = overlap_end - token_start
+        word_length = len(normalized_text)
+        if word_length <= 0:
+            continue
+
+        x0 = float(word['x0'])
+        x1 = float(word['x1'])
+        y0 = float(word['y0'])
+        y1 = float(word['y1'])
+
+        # 近似按字符比例裁剪单词矩形，保证只高亮关键词覆盖的子串区间。
+        left_x = min(x0, x1)
+        right_x = max(x0, x1)
+        width = right_x - left_x
+        if width <= 0:
+            continue
+
+        ratio_start = word_match_start / word_length
+        ratio_end = word_match_end / word_length
+        clipped_x0 = left_x + width * ratio_start
+        clipped_x1 = left_x + width * ratio_end
+
+        matched_word_items.append({
+            **word,
+            'x0': clipped_x0,
+            'x1': clipped_x1,
+            'y0': y0,
+            'y1': y1
+        })
+
+    return merge_words_to_rect_segments(matched_word_items)
+
+
 # 在指定起始页附近定向定位关键词，并自动补齐跨行或跨页矩形。
 def locate_keyword_near_page(
     pdf_doc: fitz.Document,
@@ -191,6 +249,7 @@ def locate_keyword_near_page(
         })
 
     first_fallback_match: list[dict[str, float | int | str]] | None = None
+    first_fallback_range: tuple[int, int] | None = None
     search_from = 0
     while True:
         match_index = searchable_text.find(normalized_keyword, search_from)
@@ -205,25 +264,42 @@ def locate_keyword_near_page(
         ]
         if matched_words:
             if any(int(word['page_num']) == start_page_num for word in matched_words):
-                return merge_words_to_rect_segments(matched_words)
+                return build_rect_segments_from_match(token_positions, match_index, match_end)
 
-            if first_fallback_match is None:
+            if first_fallback_match is None and first_fallback_range is None:
                 first_fallback_match = matched_words
+                first_fallback_range = (match_index, match_end)
 
         search_from = match_index + 1
 
-    if first_fallback_match:
-        return merge_words_to_rect_segments(first_fallback_match)
+    if first_fallback_match and first_fallback_range:
+        return build_rect_segments_from_match(token_positions, first_fallback_range[0], first_fallback_range[1])
 
     # 兜底：支持英文不完整单词输入，按“单词内包含”返回矩形。
     # 例如输入 "symlin" 也可命中 "symlinkat"。
-    same_page_words = [word for word in word_items if int(word['page_num']) == start_page_num]
-    for word in same_page_words:
-        if normalized_keyword in str(word['normalized_text']):
-            return merge_words_to_rect_segments([word])
+    same_page_positions = [
+        position
+        for position in token_positions
+        if int(dict(position['word'])['page_num']) == start_page_num
+    ]
+    for position in same_page_positions:
+        word = dict(position['word'])
+        word_text = str(word['normalized_text'])
+        token_start = int(position['start'])
+        local_index = word_text.find(normalized_keyword)
+        if local_index >= 0:
+            match_start = token_start + local_index
+            match_end = match_start + len(normalized_keyword)
+            return build_rect_segments_from_match(token_positions, match_start, match_end)
 
-    for word in word_items:
-        if normalized_keyword in str(word['normalized_text']):
-            return merge_words_to_rect_segments([word])
+    for position in token_positions:
+        word = dict(position['word'])
+        word_text = str(word['normalized_text'])
+        token_start = int(position['start'])
+        local_index = word_text.find(normalized_keyword)
+        if local_index >= 0:
+            match_start = token_start + local_index
+            match_end = match_start + len(normalized_keyword)
+            return build_rect_segments_from_match(token_positions, match_start, match_end)
 
     return []
