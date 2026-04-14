@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.repositories.pdf_repository import count_unfinished_ingest_jobs, list_highlight_hits, list_highlight_hits_by_group_id
 from app.schemas.common import ApiResponse
-from app.schemas.hit import HighlightHitItem, HighlightHitPage, HighlightRectItem
+from app.schemas.hit import HighlightHitItem, HighlightHitPage
 
 router = APIRouter(prefix='/api', tags=['hits'])
 
@@ -22,37 +22,23 @@ async def get_highlight_hits(
     has_pending_jobs = (await count_unfinished_ingest_jobs(session, pdf_id)) > 0
 
     items = []
-    for row in rows:
-        representative_hit = row['representative_hit']
-        document = row['document']
-        group_hits = row['hits']
+    for hit, document in rows:
         items.append(
             HighlightHitItem(
-                hitId=representative_hit.id,
-                pdfId=representative_hit.pdf_id,
+                hitId=hit.id,
+                pdfId=hit.pdf_id,
                 fileName=document.file_name,
-                previewUrl=f'/api/pdf/{representative_hit.pdf_id}/file',
-                status='matched' if representative_hit.w > 0 and representative_hit.h > 0 else 'pending_coords',
-                pageNum=representative_hit.page_num,
-                keyword=representative_hit.keyword,
-                x=representative_hit.x,
-                y=representative_hit.y,
-                w=representative_hit.w,
-                h=representative_hit.h,
-                groupId=representative_hit.group_id,
-                relatedRects=[
-                    HighlightRectItem(
-                        pageNum=group_hit.page_num,
-                        x=group_hit.x,
-                        y=group_hit.y,
-                        w=group_hit.w,
-                        h=group_hit.h
-                    )
-                    for group_hit in group_hits
-                ]
+                previewUrl=f'/api/pdf/{hit.pdf_id}/file',
+                status='matched' if hit.w > 0 and hit.h > 0 else 'pending_coords',
+                pageNum=hit.page_num,
+                keyword=hit.keyword,
+                x=hit.x,
+                y=hit.y,
+                w=hit.w,
+                h=hit.h,
+                groupId=hit.group_id
             )
         )
-    
 
     return ApiResponse(
         data=HighlightHitPage(
@@ -85,16 +71,7 @@ async def get_highlight_group_hits(
             y=hit.y,
             w=hit.w,
             h=hit.h,
-            groupId=hit.group_id,
-            relatedRects=[
-                HighlightRectItem(
-                    pageNum=hit.page_num,
-                    x=hit.x,
-                    y=hit.y,
-                    w=hit.w,
-                    h=hit.h
-                )
-            ]
+            groupId=hit.group_id
         )
         for hit, document in rows
     ]

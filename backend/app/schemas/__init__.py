@@ -1,5 +1,5 @@
 from .common import ApiResponse, PaginationData
-from .hit import HighlightHitItem, HighlightHitPage, HighlightRectItem
+from .hit import HighlightHitItem, HighlightHitPage
 from .ingest import (
     IngestJobCreateResult,
     IngestJobResultItem,
@@ -15,7 +15,6 @@ __all__ = [
     'PaginationData',
     'HighlightHitItem',
     'HighlightHitPage',
-    'HighlightRectItem',
     'IngestRequest',
     'ManualHighlightInputItem',
     'ManualHighlightBatchRequest',

@@ -12,16 +12,6 @@ export interface HighlightHitItem {
   w: number;
   h: number;
   groupId?: string | null;
-  relatedRects?: HighlightRectItem[];
-}
-
-// 同组高亮中的单个矩形信息。
-export interface HighlightRectItem {
-  pageNum: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 // 命中分页结果类型。
@@ -47,6 +37,7 @@ export interface PdfMetaData {
   totalPages: number;
   fileSize: number;
   isLinearized: boolean;
+  ossObjectKey?: string | null;
   // 仅保证包含第一页尺寸，其余页在前端渲染时逐步纠偏。
   pageSizeList: PageSizeItem[];
 }
@@ -86,6 +77,12 @@ export interface PdfUploadJobStatusResult {
   totalPages?: number | null;
   totalHits?: number | null;
   items: PdfUploadJobResultItem[];
+}
+
+// PDF 预览地址（优先 OSS 直链）。
+export interface PdfPreviewUrlResult {
+  previewUrl: string;
+  source: string;
 }
 
 // 统一响应包装类型。

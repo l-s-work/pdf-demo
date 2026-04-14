@@ -5,3 +5,5 @@ aiosqlite==0.21.0
 pydantic==2.11.4
 python-multipart==0.0.20
 PyMuPDF==1.25.5
+oss2==2.19.1
+python-dotenv==1.0.1

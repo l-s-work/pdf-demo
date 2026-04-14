@@ -18,12 +18,14 @@ import {
 } from './styles';
 import { createHitColumns } from './tableColumns';
 
+// 上传区手工测试项草稿结构。
 interface ManualHighlightDraftItem {
   id: string;
   pageNum: number;
   keyword: string;
 }
 
+// 创建一条默认的手工测试项草稿。
 function createDraftItem(): ManualHighlightDraftItem {
   return {
     id: `draft_${Math.random().toString(36).slice(2, 10)}`,

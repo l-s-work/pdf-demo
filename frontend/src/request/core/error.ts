@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+// 统一请求错误对象的构造参数。
 interface AppRequestErrorOptions {
   code: string;
   message: string;

@@ -2,9 +2,9 @@ import type { PageViewport } from 'pdfjs-dist/types/src/display/display_utils';
 import type { HighlightHitItem } from '../../types/pdf';
 import type { ViewportRect } from '../../components/pdf/HighlightOverlay';
 
-// 将后端返回的 PDF 原始坐标转换为前端可绘制的视口矩形。
+// 将后端返回的原始坐标（PyMuPDF：左上角原点）转换为前端可绘制的视口矩形。
 export function toViewportRect(viewport: PageViewport, activeHit: HighlightHitItem): ViewportRect {
-  // 后端（PyMuPDF）坐标是“当前页可视区域（crop 后）左上角原点”。
+  // 后端返回的是 PyMuPDF 原始坐标：当前页可视区域（crop 后）左上角原点。
   // pdf.js convertToViewportRectangle 需要“PDF 用户空间（左下角原点）坐标”，
   // 且该坐标要包含 viewBox 的 x/y 偏移（有些页 cropBox 不是从 0,0 开始）。
   const [viewX0, viewY0, viewX1, viewY1] = viewport.viewBox;

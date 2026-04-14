@@ -17,6 +17,7 @@ class PdfDocument(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    oss_object_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     total_pages: Mapped[int] = mapped_column(Integer, nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     is_linearized: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

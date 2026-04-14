@@ -3,10 +3,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.core.settings import is_oss_ready
 from app.repositories.pdf_repository import (
     count_unfinished_ingest_jobs,
     get_document_by_id,
@@ -23,6 +25,8 @@ from app.schemas.ingest import (
 )
 from app.services.ingest_job_service import build_ingest_job_status, create_ingest_job, process_ingest_job
 from app.services.ingest_service import ingest_pdf_from_path, save_uploaded_pdf
+from app.utils.file_utils import build_pdf_storage_path
+from app.utils.oss_utils import download_pdf_file_from_oss, resolve_pdf_object_key
 
 router = APIRouter(prefix='/api/pdf', tags=['pdf-ingest'])
 
@@ -123,7 +127,26 @@ async def append_manual_hits(
         file_path = Path(latest_job.file_path)
 
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail='PDF 文件不存在，请重新上传')
+        if not is_oss_ready():
+            raise HTTPException(status_code=404, detail='PDF 文件不存在，请重新上传')
+
+        try:
+            target_local_path = build_pdf_storage_path(pdf_id, file_name)
+            object_key = resolve_pdf_object_key(
+                pdf_id,
+                file_name,
+                document.oss_object_key if document else None
+            )
+            await run_in_threadpool(download_pdf_file_from_oss, object_key, target_local_path)
+            file_path = target_local_path
+
+            if document:
+                document.file_path = str(target_local_path.resolve())
+                if not document.oss_object_key:
+                    document.oss_object_key = object_key
+                await session.commit()
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail='PDF 文件不存在，请重新上传') from exc
 
     job_id = f'job_{uuid4().hex[:16]}'
     await create_ingest_job(

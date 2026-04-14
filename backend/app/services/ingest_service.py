@@ -1,11 +1,18 @@
 from pathlib import Path
 from uuid import uuid4
 
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import PdfDocument, PdfHighlightHit, PdfPageMeta
+from app.core.settings import is_oss_ready
 from app.utils.file_utils import copy_pdf_to_storage, save_pdf_bytes_to_storage
+from app.utils.oss_utils import (
+    object_exists_in_oss,
+    resolve_pdf_object_key,
+    upload_pdf_file_to_oss
+)
 from app.utils.pdf_extract import (
     extract_first_page_meta,
     extract_keyword_hits,
@@ -53,11 +60,19 @@ async def ingest_pdf_with_manual_targets(
     try:
         document = await session.get(PdfDocument, pdf_id)
         if not document:
+            object_key: str | None = None
+            if is_oss_ready():
+                object_key = resolve_pdf_object_key(pdf_id, file_name)
+                object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
+                if not object_exists:
+                    await run_in_threadpool(upload_pdf_file_to_oss, pdf_id, file_name, target_path)
+
             session.add(
                 PdfDocument(
                     id=pdf_id,
                     file_path=str(target_path.resolve()),
                     file_name=file_name,
+                    oss_object_key=object_key,
                     total_pages=pdf_doc.page_count,
                     file_size=target_path.stat().st_size,
                     is_linearized=1
@@ -76,6 +91,15 @@ async def ingest_pdf_with_manual_targets(
                     )
                 )
         else:
+            if is_oss_ready():
+                object_key = resolve_pdf_object_key(pdf_id, file_name, document.oss_object_key)
+                if not document.oss_object_key:
+                    document.oss_object_key = object_key
+
+                object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
+                if not object_exists:
+                    await run_in_threadpool(upload_pdf_file_to_oss, pdf_id, file_name, target_path)
+
             meta_count_stmt = select(PdfPageMeta.id).where(PdfPageMeta.pdf_id == pdf_id).limit(1)
             meta_exists = (await session.execute(meta_count_stmt)).first()
             if not meta_exists:
@@ -184,11 +208,19 @@ async def _persist_full_scan_pdf_records(
     pdf_doc = open_pdf_document(target_path)
 
     try:
+        object_key: str | None = None
+        if is_oss_ready():
+            object_key = resolve_pdf_object_key(doc_id, file_name)
+            object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
+            if not object_exists:
+                await run_in_threadpool(upload_pdf_file_to_oss, doc_id, file_name, target_path)
+
         session.add(
             PdfDocument(
                 id=doc_id,
                 file_path=str(target_path.resolve()),
                 file_name=file_name,
+                oss_object_key=object_key,
                 total_pages=pdf_doc.page_count,
                 file_size=target_path.stat().st_size,
                 is_linearized=1

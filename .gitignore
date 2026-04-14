@@ -12,6 +12,8 @@ frontend/tsconfig.tsbuildinfo
 
 .env
 .env.*
+!.env.example
+!backend/.env.example
 
 .DS_Store
 Thumbs.db

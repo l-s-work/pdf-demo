@@ -11,7 +11,7 @@ async def list_highlight_hits(
     page_size: int,
     pdf_id: str | None,
     keyword: str | None
-) -> tuple[int, list[dict[str, object]]]:
+) -> tuple[int, list[tuple[PdfHighlightHit, PdfDocument]]]:
     filters = []
     if pdf_id:
         filters.append(PdfHighlightHit.pdf_id == pdf_id)
@@ -20,6 +20,11 @@ async def list_highlight_hits(
 
     condition = and_(*filters) if filters else None
 
+    total_stmt = select(func.count()).select_from(PdfHighlightHit)
+    if condition is not None:
+        total_stmt = total_stmt.where(condition)
+    total = int((await session.execute(total_stmt)).scalar_one())
+
     query_stmt = (
         select(PdfHighlightHit, PdfDocument)
         .join(PdfDocument, PdfDocument.id == PdfHighlightHit.pdf_id)
@@ -27,62 +32,10 @@ async def list_highlight_hits(
     )
     if condition is not None:
         query_stmt = query_stmt.where(condition)
+    query_stmt = query_stmt.limit(page_size).offset((page - 1) * page_size)
 
-    rows = (await session.execute(query_stmt)).all()
-
-    grouped_rows: dict[str, dict[str, object]] = {}
-    for hit, document in rows:
-        group_key = hit.group_id or hit.id
-        group = grouped_rows.get(group_key)
-        if group is None:
-            grouped_rows[group_key] = {
-                'representative_hit': hit,
-                'document': document,
-                'hits': [hit],
-                'latest_created_at': hit.created_at
-            }
-            continue
-
-        group_hits: list[PdfHighlightHit] = group['hits']  # type: ignore[assignment]
-        group_hits.append(hit)
-
-        representative_hit: PdfHighlightHit = group['representative_hit']  # type: ignore[assignment]
-        if (
-            hit.page_num < representative_hit.page_num
-            or (hit.page_num == representative_hit.page_num and hit.y < representative_hit.y)
-            or (hit.page_num == representative_hit.page_num and hit.y == representative_hit.y and hit.x < representative_hit.x)
-            or (
-                hit.page_num == representative_hit.page_num
-                and hit.y == representative_hit.y
-                and hit.x == representative_hit.x
-                and hit.id < representative_hit.id
-            )
-        ):
-            group['representative_hit'] = hit
-
-        latest_created_at = group['latest_created_at']
-        if hit.created_at > latest_created_at:  # type: ignore[operator]
-            group['latest_created_at'] = hit.created_at
-
-    ordered_rows = sorted(
-        grouped_rows.items(),
-        key=lambda item: (
-            item[1]['latest_created_at'],
-            item[1]['representative_hit'].id  # type: ignore[index]
-        ),
-        reverse=True
-    )
-    total = len(ordered_rows)
-    offset = (page - 1) * page_size
-    paged_rows = [row for _, row in ordered_rows[offset:offset + page_size]]
-
-    for row in paged_rows:
-        row['hits'] = sorted(
-            row['hits'],  # type: ignore[index]
-            key=lambda item: (item.page_num, item.y, item.x, item.id)
-        )
-
-    return total, paged_rows
+    rows = list((await session.execute(query_stmt)).all())
+    return total, rows
 
 
 # 按文档 ID 查询文档基础记录。

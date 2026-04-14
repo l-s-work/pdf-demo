@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Empty, Space, Spin, Typography } from "antd";
-import { getRequestErrorMessage } from "../../api/http";
-import { fetchPdfMeta } from "../../api/pdf";
+import { getRequestErrorMessage, resolveRequestUrl } from "../../api/http";
+import { fetchPdfMeta, fetchPdfPreviewUrl } from "../../api/pdf";
 import PdfVirtualViewer from "../../components/pdf/PdfVirtualViewer";
 import { useViewerStore } from "../../store/viewerStore";
 import { buildPreviewUrl } from "../../utils/pdf/buildPreviewUrl";
@@ -36,27 +36,23 @@ export default function PdfViewerPage() {
     staleTime: 1000 * 60 * 10,
   });
 
+  const {
+    data: previewData,
+    isLoading: isPreviewUrlLoading,
+    error: previewUrlError,
+  } = useQuery({
+    queryKey: ["pdf-preview-url", pdfId, previewNonce],
+    queryFn: ({ signal }) => fetchPdfPreviewUrl(pdfId, { signal }),
+    enabled: Boolean(pdfId),
+    staleTime: 0,
+  });
+
   const activeHits = useMemo(() => {
     if (!hit) {
       return [];
     }
 
-    const relatedHits = (hit.relatedRects ?? [])
-      .filter((item) => item.pageNum > 0 && item.w > 0 && item.h > 0)
-      .map((item, index) => ({
-        ...hit,
-        hitId: `${hit.hitId}_rect_${index}`,
-        pageNum: item.pageNum,
-        x: item.x,
-        y: item.y,
-        w: item.w,
-        h: item.h,
-      }));
-
-    if (relatedHits.length > 0) {
-      return relatedHits;
-    }
-
+    // 预览页遵循 per-hit 语义：单条命中仅渲染一个矩形。
     if (hit.pageNum > 0 && hit.w > 0 && hit.h > 0) {
       return [hit];
     }
@@ -89,9 +85,43 @@ export default function PdfViewerPage() {
   }, [currentPage, meta]);
 
   const previewUrl = useMemo(
-    () => buildPreviewUrl(pdfId, hit, previewNonce),
-    [hit, pdfId, previewNonce],
+    () => {
+      if (!previewData && !previewUrlError) {
+        return "";
+      }
+
+      if (!previewData) {
+        return buildPreviewUrl(pdfId, hit, previewNonce);
+      }
+
+      const rawUrl = previewData.previewUrl;
+      const isAbsoluteUrl = /^https?:\/\//i.test(rawUrl);
+      const isBackendProxy = previewData.source === "backend-proxy";
+      const proxyUrl =
+        isBackendProxy && previewNonce > 0
+          ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}_open=${previewNonce}`
+          : rawUrl;
+
+      if (isAbsoluteUrl) {
+        return proxyUrl;
+      }
+
+      return resolveRequestUrl(proxyUrl);
+    },
+    [hit, pdfId, previewData, previewNonce, previewUrlError],
   );
+
+  const previewSourceLabel = useMemo(() => {
+    if (!previewData) {
+      return "预览来源：后端代理文件流（回退模式）";
+    }
+
+    if (previewData.source === "oss-signed") {
+      return "预览来源：OSS 签名直链";
+    }
+
+    return "预览来源：后端代理文件流";
+  }, [previewData]);
 
   async function handleColdReload() {
     if (!pdfId) {
@@ -128,7 +158,7 @@ export default function PdfViewerPage() {
               冷启动重载
             </Button>
             <Typography.Text type="secondary">
-              预览来源：原始 PDF 文件（/api/pdf/{pdfId}/file）
+              {previewSourceLabel}
             </Typography.Text>
             {hit ? (
               <Typography.Text type="secondary">
@@ -148,6 +178,17 @@ export default function PdfViewerPage() {
             showIcon
           />
         ) : null}
+        {previewUrlError ? (
+          <Alert
+            type="warning"
+            message={getRequestErrorMessage(
+              previewUrlError,
+              "获取 OSS 签名链接失败，已自动回退后端代理预览",
+            )}
+            showIcon
+          />
+        ) : null}
+        {isPreviewUrlLoading ? <Spin tip="正在获取预览地址..." /> : null}
         {meta ? (
           <Typography.Text
             style={{
@@ -164,7 +205,7 @@ export default function PdfViewerPage() {
             第 {safeCurrentPageNum} / {meta.totalPages} 页
           </Typography.Text>
         ) : null}
-        {meta ? (
+        {meta && previewUrl ? (
           <PdfVirtualViewer
             pdfId={pdfId}
             meta={meta}

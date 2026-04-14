@@ -1,14 +1,55 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.settings import is_oss_ready
 from app.core.database import get_session
 from app.repositories.pdf_repository import get_document_by_id
+from app.schemas.common import ApiResponse
+from app.schemas.pdf import PdfPreviewUrlData
+from app.utils.file_utils import build_pdf_storage_path
+from app.utils.oss_utils import (
+    build_signed_get_url,
+    download_pdf_file_from_oss,
+    object_exists_in_oss,
+    resolve_pdf_object_key
+)
 from app.utils.range_utils import iter_file_range, parse_range_header
 
 router = APIRouter(prefix='/api/pdf', tags=['pdf-file'])
+
+
+# 获取预览地址：优先返回 OSS 签名直链，失败时回退后端代理。
+@router.get('/{pdf_id}/preview-url', response_model=ApiResponse[PdfPreviewUrlData])
+async def get_pdf_preview_url(
+    pdf_id: str,
+    session: AsyncSession = Depends(get_session)
+) -> ApiResponse[PdfPreviewUrlData]:
+    document = await get_document_by_id(session, pdf_id)
+    if not document:
+        raise HTTPException(status_code=404, detail='文档不存在')
+
+    if is_oss_ready():
+        object_key = resolve_pdf_object_key(document.id, document.file_name, document.oss_object_key)
+        object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
+        if object_exists:
+            signed_url = await run_in_threadpool(build_signed_get_url, object_key)
+            return ApiResponse(
+                data=PdfPreviewUrlData(
+                    previewUrl=signed_url,
+                    source='oss-signed'
+                )
+            )
+
+    return ApiResponse(
+        data=PdfPreviewUrlData(
+            previewUrl=f'/api/pdf/{pdf_id}/file',
+            source='backend-proxy'
+        )
+    )
 
 
 # 按文档 ID 输出 PDF 文件，支持 Range 流式读取。
@@ -24,7 +65,16 @@ async def get_pdf_file(
 
     file_path = Path(document.file_path)
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail='PDF 文件不存在')
+        if not is_oss_ready():
+            raise HTTPException(status_code=404, detail='PDF 文件不存在')
+
+        try:
+            target_local_path = build_pdf_storage_path(document.id, document.file_name)
+            object_key = resolve_pdf_object_key(document.id, document.file_name, document.oss_object_key)
+            await run_in_threadpool(download_pdf_file_from_oss, object_key, target_local_path)
+            file_path = target_local_path
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail='PDF 文件不存在') from exc
 
     file_size = file_path.stat().st_size
     response_headers = {

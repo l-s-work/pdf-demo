@@ -3,12 +3,20 @@ import type {
   ApiResponse,
   ManualHighlightInputItem,
   PdfMetaData,
+  PdfPreviewUrlResult,
   PdfUploadJobCreateResult
 } from '../types/pdf';
 
 // 按文档 ID 获取轻量索引，用于计算每页尺寸和虚拟滚动。
 export async function fetchPdfMeta(pdfId: string, options?: RequestOptions): Promise<PdfMetaData> {
   const response = await requestClient.get<ApiResponse<PdfMetaData>>(`/api/pdf/${pdfId}/meta`, options);
+  return response.data;
+}
+
+
+// 获取 PDF 预览地址，优先返回 OSS 签名直链。
+export async function fetchPdfPreviewUrl(pdfId: string, options?: RequestOptions): Promise<PdfPreviewUrlResult> {
+  const response = await requestClient.get<ApiResponse<PdfPreviewUrlResult>>(`/api/pdf/${pdfId}/preview-url`, options);
   return response.data;
 }
 

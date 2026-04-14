@@ -15,4 +15,11 @@ class PdfMetaData(BaseModel):
     totalPages: int
     fileSize: int
     isLinearized: bool
+    ossObjectKey: str | None = None
     pageSizeList: list[PdfPageSizeItem]
+
+
+# 预览地址信息（优先 OSS 签名直链，失败时回退后端代理）。
+class PdfPreviewUrlData(BaseModel):
+    previewUrl: str
+    source: str
