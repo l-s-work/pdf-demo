@@ -15,4 +15,5 @@ export interface PdfPageCanvasProps {
   scale: number;
   warmupPage: (pageNum: number) => Promise<import('pdfjs-dist/types/src/display/api').PDFPageProxy | null>;
   activeHits?: HighlightHitItem[];
+  onPageMeasured?: (pageNum: number, width: number, height: number) => void;
 }

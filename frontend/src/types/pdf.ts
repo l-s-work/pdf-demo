@@ -4,6 +4,7 @@ export interface HighlightHitItem {
   pdfId: string;
   fileName: string;
   previewUrl: string;
+  status: string;
   pageNum: number;
   keyword: string;
   x: number;
@@ -46,6 +47,7 @@ export interface PdfMetaData {
   totalPages: number;
   fileSize: number;
   isLinearized: boolean;
+  // 仅保证包含第一页尺寸，其余页在前端渲染时逐步纠偏。
   pageSizeList: PageSizeItem[];
 }
 

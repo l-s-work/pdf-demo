@@ -6,7 +6,7 @@ import { StyledCanvas, StyledPageFrame } from './styles';
 import type { PdfPageCanvasProps } from './types';
 
 // 单页渲染组件：负责绘制页面 Canvas，并在命中页渲染高亮框。
-export default function PdfPageCanvas({ pageNum, scale, warmupPage, activeHits }: PdfPageCanvasProps) {
+export default function PdfPageCanvas({ pageNum, scale, warmupPage, activeHits, onPageMeasured }: PdfPageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [highlightRects, setHighlightRects] = useState<ViewportRect[]>([]);
 
@@ -30,8 +30,15 @@ export default function PdfPageCanvas({ pageNum, scale, warmupPage, activeHits }
         return;
       }
 
-      canvasElement.width = Math.floor(viewport.width);
-      canvasElement.height = Math.floor(viewport.height);
+      // 用真实渲染尺寸回填虚拟高度估算，逐页纠偏。
+      onPageMeasured?.(pageNum, viewport.width / scale, viewport.height / scale);
+
+      const outputScale = window.devicePixelRatio || 1;
+      canvasElement.width = Math.floor(viewport.width * outputScale);
+      canvasElement.height = Math.floor(viewport.height * outputScale);
+      canvasElement.style.width = `${Math.floor(viewport.width)}px`;
+      canvasElement.style.height = `${Math.floor(viewport.height)}px`;
+      context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
       await page.render({ canvasContext: context, viewport }).promise;
 
       if (disposed) {
@@ -47,7 +54,7 @@ export default function PdfPageCanvas({ pageNum, scale, warmupPage, activeHits }
       // 阻止异步结果在组件卸载后继续回写。
       disposed = true;
     };
-  }, [activeHits, pageNum, scale, warmupPage]);
+  }, [activeHits, onPageMeasured, pageNum, scale, warmupPage]);
 
   return (
     <StyledPageFrame>

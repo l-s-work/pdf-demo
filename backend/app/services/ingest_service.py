@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import PdfDocument, PdfHighlightHit, PdfPageMeta
 from app.utils.file_utils import copy_pdf_to_storage, save_pdf_bytes_to_storage
-from app.utils.pdf_extract import extract_keyword_hits, extract_page_meta, locate_keyword_near_page, open_pdf_document
+from app.utils.pdf_extract import (
+    extract_first_page_meta,
+    extract_keyword_hits,
+    locate_keyword_near_page,
+    open_pdf_document
+)
 
 
 # 按本地 PDF 路径执行全量入库：提取页尺寸并按关键词生成 per-hit 命中。
@@ -59,28 +64,30 @@ async def ingest_pdf_with_manual_targets(
                 )
             )
 
-            for page_meta in extract_page_meta(pdf_doc):
+            first_page_meta = extract_first_page_meta(pdf_doc)
+            if first_page_meta:
                 session.add(
                     PdfPageMeta(
                         pdf_id=pdf_id,
-                        page_num=int(page_meta['page_num']),
-                        width=float(page_meta['width']),
-                        height=float(page_meta['height']),
-                        rotation=int(page_meta['rotation'])
+                        page_num=int(first_page_meta['page_num']),
+                        width=float(first_page_meta['width']),
+                        height=float(first_page_meta['height']),
+                        rotation=int(first_page_meta['rotation'])
                     )
                 )
         else:
             meta_count_stmt = select(PdfPageMeta.id).where(PdfPageMeta.pdf_id == pdf_id).limit(1)
             meta_exists = (await session.execute(meta_count_stmt)).first()
             if not meta_exists:
-                for page_meta in extract_page_meta(pdf_doc):
+                first_page_meta = extract_first_page_meta(pdf_doc)
+                if first_page_meta:
                     session.add(
                         PdfPageMeta(
                             pdf_id=pdf_id,
-                            page_num=int(page_meta['page_num']),
-                            width=float(page_meta['width']),
-                            height=float(page_meta['height']),
-                            rotation=int(page_meta['rotation'])
+                            page_num=int(first_page_meta['page_num']),
+                            width=float(first_page_meta['width']),
+                            height=float(first_page_meta['height']),
+                            rotation=int(first_page_meta['rotation'])
                         )
                     )
 
@@ -88,19 +95,34 @@ async def ingest_pdf_with_manual_targets(
         total_hits = 0
         for item in items:
             keyword = str(item['keyword']).strip()
-            input_page_num = int(item['pageNum'])
-            rect_segments = locate_keyword_near_page(pdf_doc, keyword, input_page_num)
+            requested_page_num = int(item['pageNum'])
+            start_page_num = min(max(1, requested_page_num), pdf_doc.page_count)
+            rect_segments = locate_keyword_near_page(pdf_doc, keyword, start_page_num)
 
             if not rect_segments:
+                # 为未命中项也落一条“页码可定位、坐标待补”的记录，便于前端列表完整展示测试输入。
+                session.add(
+                    PdfHighlightHit(
+                        id=f'hit_{uuid4().hex[:16]}',
+                        pdf_id=pdf_id,
+                        page_num=start_page_num,
+                        keyword=keyword,
+                        x=0.0,
+                        y=0.0,
+                        w=0.0,
+                        h=0.0,
+                        group_id=None
+                    )
+                )
                 result_items.append({
                     'keyword': keyword,
-                    'inputPageNum': input_page_num,
+                    'inputPageNum': requested_page_num,
                     'matchedPageNums': [],
                     'hitCount': 0,
                     'status': 'not_found',
                     'groupId': None,
                     'anchorHitId': None,
-                    'anchorPageNum': None
+                    'anchorPageNum': start_page_num
                 })
                 continue
 
@@ -129,13 +151,13 @@ async def ingest_pdf_with_manual_targets(
             total_hits += len(rect_segments)
             result_items.append({
                 'keyword': keyword,
-                'inputPageNum': input_page_num,
+                'inputPageNum': requested_page_num,
                 'matchedPageNums': matched_page_nums,
                 'hitCount': len(rect_segments),
                 'status': 'matched',
                 'groupId': group_id,
                 'anchorHitId': anchor_hit_id,
-                'anchorPageNum': matched_page_nums[0] if matched_page_nums else input_page_num
+                'anchorPageNum': matched_page_nums[0] if matched_page_nums else start_page_num
             })
 
         await session.commit()
@@ -173,14 +195,15 @@ async def _persist_full_scan_pdf_records(
             )
         )
 
-        for page_meta in extract_page_meta(pdf_doc):
+        first_page_meta = extract_first_page_meta(pdf_doc)
+        if first_page_meta:
             session.add(
                 PdfPageMeta(
                     pdf_id=doc_id,
-                    page_num=int(page_meta['page_num']),
-                    width=float(page_meta['width']),
-                    height=float(page_meta['height']),
-                    rotation=int(page_meta['rotation'])
+                    page_num=int(first_page_meta['page_num']),
+                    width=float(first_page_meta['width']),
+                    height=float(first_page_meta['height']),
+                    rotation=int(first_page_meta['rotation'])
                 )
             )
 

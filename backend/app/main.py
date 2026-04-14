@@ -14,7 +14,8 @@ app.add_middleware(
     allow_origins=['*'],
     allow_methods=['*'],
     allow_headers=['*'],
-    allow_credentials=True
+    allow_credentials=True,
+    expose_headers=['Accept-Ranges', 'Content-Length', 'Content-Range', 'ETag']
 )
 
 app.include_router(hits_router)

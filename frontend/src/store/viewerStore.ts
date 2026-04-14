@@ -12,7 +12,7 @@ interface ViewerState {
 
 // 创建全局 Viewer 状态仓库。
 export const useViewerStore = create<ViewerState>((set) => ({
-  scale: 1.25,
+  scale: 1,
   currentPage: 1,
   activeHitId: undefined,
   setScale: (scale) => set({ scale }),

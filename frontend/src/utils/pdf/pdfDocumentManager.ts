@@ -1,8 +1,14 @@
-import { getDocument } from 'pdfjs-dist';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 
 const MAX_CACHED_PDF_COUNT = 5;
 const MAX_CACHED_PAGE_PROMISE_COUNT = 20;
+const PDF_WORKER_SRC = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+
+// 统一配置 pdf.js worker，避免运行时出现 workerSrc 未指定错误。
+if (!GlobalWorkerOptions.workerSrc) {
+  GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
+}
 
 interface PdfCacheEntry {
   pdfId: string;
@@ -44,9 +50,13 @@ class PdfDocumentManager {
     if (!entry.loadingPromise) {
       const loadingTask = getDocument({
         url: pdfUrl,
-        disableAutoFetch: false,
-        disableStream: false,
-        rangeChunkSize: 128 * 1024
+        // 大文件测试场景下优先按 Range 分片拉取：
+        // 1) 首次打开先拿目标页相关分片，缩短“可见首屏”时间
+        // 2) 禁止自动预取整文件，避免首开退化成一次性全量下载
+        disableStream: true,
+        disableAutoFetch: true,
+        disableRange: false,
+        rangeChunkSize: 256 * 1024
       });
 
       entry.loadingTask = loadingTask;
@@ -106,6 +116,23 @@ class PdfDocumentManager {
     const pagePromise = entry.pdfDoc.getPage(pageNum);
     this.touchPagePromise(entry, pageNum, pagePromise);
     return pagePromise;
+  }
+
+  // 清理指定文档或全部缓存，用于手动验证“冷启动打开”场景。
+  async clearCache(pdfId?: string): Promise<void> {
+    if (pdfId) {
+      const entry = this.cache.get(pdfId);
+      if (!entry) {
+        return;
+      }
+      await this.destroyEntry(pdfId, entry);
+      return;
+    }
+
+    const cacheEntries = Array.from(this.cache.entries());
+    for (const [cachedPdfId, entry] of cacheEntries) {
+      await this.destroyEntry(cachedPdfId, entry);
+    }
   }
 
   // 创建一条新的缓存记录。

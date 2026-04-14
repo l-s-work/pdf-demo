@@ -32,9 +32,6 @@ async def list_highlight_hits(
 
     grouped_rows: dict[str, dict[str, object]] = {}
     for hit, document in rows:
-        if not _is_valid_hit(hit):
-            continue
-
         group_key = hit.group_id or hit.id
         group = grouped_rows.get(group_key)
         if group is None:
@@ -140,8 +137,3 @@ async def get_latest_ingest_job_by_pdf_id(session: AsyncSession, pdf_id: str) ->
         .limit(1)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
-
-
-# 判断命中记录坐标是否完整。
-def _is_valid_hit(hit: PdfHighlightHit) -> bool:
-    return hit.page_num >= 1 and hit.w > 0 and hit.h > 0

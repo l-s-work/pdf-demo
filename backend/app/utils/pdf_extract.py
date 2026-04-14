@@ -25,6 +25,21 @@ def extract_page_meta(pdf_doc: fitz.Document) -> list[dict[str, float | int]]:
     return items
 
 
+# 仅提取第一页尺寸信息，用于上传后的快速初始化。
+def extract_first_page_meta(pdf_doc: fitz.Document) -> dict[str, float | int] | None:
+    if pdf_doc.page_count <= 0:
+        return None
+
+    page = pdf_doc[0]
+    rect = page.rect
+    return {
+        'page_num': 1,
+        'width': float(rect.width),
+        'height': float(rect.height),
+        'rotation': int(page.rotation)
+    }
+
+
 # 按关键词提取每个矩形命中，满足 per-hit 单位置设计。
 def extract_keyword_hits(pdf_doc: fitz.Document, keywords: list[str]) -> list[dict[str, float | int | str | None]]:
     hit_items: list[dict[str, float | int | str | None]] = []
@@ -46,7 +61,21 @@ def extract_keyword_hits(pdf_doc: fitz.Document, keywords: list[str]) -> list[di
 
 # 对搜索文本做归一化，忽略空白差异，便于处理跨行或跨页短语。
 def normalize_search_text(text: str) -> str:
-    return ''.join(char for char in text if not char.isspace())
+    # 统一转小写，并去除空白和常见标点，提升英文半词、代码片段等输入的命中容错。
+    normalized_chars: list[str] = []
+    for char in text:
+        if char.isspace():
+            continue
+
+        if char.isalnum() or char == '_':
+            normalized_chars.append(char.lower())
+            continue
+
+        # 保留 CJK 字符，避免中文检索被标点清洗后丢词。
+        if '\u4e00' <= char <= '\u9fff':
+            normalized_chars.append(char)
+
+    return ''.join(normalized_chars)
 
 
 # 提取指定页范围内的单词信息，供定向命中定位使用。
@@ -185,5 +214,16 @@ def locate_keyword_near_page(
 
     if first_fallback_match:
         return merge_words_to_rect_segments(first_fallback_match)
+
+    # 兜底：支持英文不完整单词输入，按“单词内包含”返回矩形。
+    # 例如输入 "symlin" 也可命中 "symlinkat"。
+    same_page_words = [word for word in word_items if int(word['page_num']) == start_page_num]
+    for word in same_page_words:
+        if normalized_keyword in str(word['normalized_text']):
+            return merge_words_to_rect_segments([word])
+
+    for word in word_items:
+        if normalized_keyword in str(word['normalized_text']):
+            return merge_words_to_rect_segments([word])
 
     return []

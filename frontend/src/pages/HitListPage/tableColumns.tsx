@@ -8,13 +8,21 @@ export function createHitColumns(navigate: NavigateFunction): ColumnsType<Highli
   return [
     { title: '文档ID', dataIndex: 'pdfId', key: 'pdfId', width: 180 },
     { title: '文件名', dataIndex: 'fileName', key: 'fileName', ellipsis: true },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (value: string) => (value === 'matched' ? '已定位' : '待定位')
+    },
     { title: '关键词', dataIndex: 'keyword', key: 'keyword', width: 180 },
     { title: '页码', dataIndex: 'pageNum', key: 'pageNum', width: 100 },
     {
       title: '坐标',
       key: 'rect',
       width: 260,
-      render: (_, record) => `x:${record.x}, y:${record.y}, w:${record.w}, h:${record.h}`
+      render: (_, record) =>
+        record.w > 0 && record.h > 0 ? `x:${record.x}, y:${record.y}, w:${record.w}, h:${record.h}` : '未返回坐标'
     },
     {
       title: '操作',

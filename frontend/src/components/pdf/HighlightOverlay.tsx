@@ -14,9 +14,9 @@ const StyledOverlay = styled.div<ViewportRect>`
   top: ${(props) => `${props.top}px`};
   width: ${(props) => `${props.width}px`};
   height: ${(props) => `${props.height}px`};
-  border-radius: 4px;
-  background: rgba(255, 204, 0, 0.35);
-  border: 1px solid rgba(255, 153, 0, 0.8);
+  border-radius: 1px;
+  background: rgba(255, 230, 0, 0.55);
+  box-shadow: none;
   pointer-events: none;
 `;
 

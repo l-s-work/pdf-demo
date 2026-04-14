@@ -16,6 +16,7 @@ class HighlightHitItem(BaseModel):
     pdfId: str
     fileName: str
     previewUrl: str
+    status: str = 'matched'
     pageNum: int
     keyword: str
     x: float

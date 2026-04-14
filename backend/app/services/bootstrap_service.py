@@ -39,20 +39,22 @@ async def bootstrap_demo_data(session: AsyncSession) -> None:
     session.add(document)
 
     hit_count = 0
-    for index in range(pymu_doc.page_count):
-        page = pymu_doc[index]
-        rect = page.rect
-
-        # 写入每页尺寸信息。
+    first_page = pymu_doc[0] if pymu_doc.page_count > 0 else None
+    if first_page is not None:
+        first_rect = first_page.rect
+        # 启动演示数据同样只写第一页尺寸，其他页由前端渲染时逐步纠偏。
         session.add(
             PdfPageMeta(
                 pdf_id=doc_id,
-                page_num=index + 1,
-                width=float(rect.width),
-                height=float(rect.height),
-                rotation=int(page.rotation)
+                page_num=1,
+                width=float(first_rect.width),
+                height=float(first_rect.height),
+                rotation=int(first_page.rotation)
             )
         )
+
+    for index in range(pymu_doc.page_count):
+        page = pymu_doc[index]
 
         # 以 test 关键词做示例提取（每个矩形作为单条 per-hit）。
         for hit_rect in page.search_for('test'):

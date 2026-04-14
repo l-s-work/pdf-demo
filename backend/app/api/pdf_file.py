@@ -27,12 +27,18 @@ async def get_pdf_file(
         raise HTTPException(status_code=404, detail='PDF 文件不存在')
 
     file_size = file_path.stat().st_size
+    response_headers = {
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    }
     if not range_header:
         return FileResponse(
             path=file_path,
             media_type='application/pdf',
             filename=document.file_name,
-            headers={'Accept-Ranges': 'bytes'}
+            headers=response_headers
         )
 
     try:
@@ -45,7 +51,7 @@ async def get_pdf_file(
         status_code=206,
         media_type='application/pdf',
         headers={
-            'Accept-Ranges': 'bytes',
+            **response_headers,
             'Content-Range': f'bytes {start}-{end}/{file_size}',
             'Content-Length': str(end - start + 1)
         }
