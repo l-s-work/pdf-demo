@@ -4,13 +4,21 @@ import type { ViewportRect } from '../../components/pdf/HighlightOverlay';
 
 // 将后端返回的 PDF 原始坐标转换为前端可绘制的视口矩形。
 export function toViewportRect(viewport: PageViewport, activeHit: HighlightHitItem): ViewportRect {
-  // 后端（PyMuPDF）使用左上角为原点，pdf.js convertToViewportRectangle 使用左下角为原点。
-  // 因此先将 y 坐标转换到 PDF 用户空间，再交给 viewport 做缩放与旋转映射。
-  const pageHeight = viewport.viewBox[3] - viewport.viewBox[1];
-  const pdfX0 = activeHit.x;
-  const pdfY0 = pageHeight - (activeHit.y + activeHit.h);
-  const pdfX1 = activeHit.x + activeHit.w;
-  const pdfY1 = pageHeight - activeHit.y;
+  // 后端（PyMuPDF）坐标是“当前页可视区域（crop 后）左上角原点”。
+  // pdf.js convertToViewportRectangle 需要“PDF 用户空间（左下角原点）坐标”，
+  // 且该坐标要包含 viewBox 的 x/y 偏移（有些页 cropBox 不是从 0,0 开始）。
+  const [viewX0, viewY0, viewX1, viewY1] = viewport.viewBox;
+  const pageHeight = viewY1 - viewY0;
+
+  const localX0 = activeHit.x;
+  const localY0 = activeHit.y;
+  const localX1 = activeHit.x + activeHit.w;
+  const localY1 = activeHit.y + activeHit.h;
+
+  const pdfX0 = viewX0 + localX0;
+  const pdfX1 = viewX0 + localX1;
+  const pdfY0 = viewY0 + (pageHeight - localY1);
+  const pdfY1 = viewY0 + (pageHeight - localY0);
 
   const [x1, y1, x2, y2] = viewport.convertToViewportRectangle([
     pdfX0,
