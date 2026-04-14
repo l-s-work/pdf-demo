@@ -1,8 +1,11 @@
 from pathlib import Path
+import unicodedata
 
 import fitz
 
 MANUAL_HIT_LOOKAHEAD_PAGES = 2
+MANUAL_HIT_LOOKBACK_PAGES = 2
+MANUAL_FRAGMENT_MIN_LENGTH = 12
 
 
 # 打开 PDF 文档对象。
@@ -61,9 +64,10 @@ def extract_keyword_hits(pdf_doc: fitz.Document, keywords: list[str]) -> list[di
 
 # 对搜索文本做归一化，忽略空白差异，便于处理跨行或跨页短语。
 def normalize_search_text(text: str) -> str:
+    normalized_text = unicodedata.normalize('NFKC', text)
     # 统一转小写，并去除空白和常见标点，提升英文半词、代码片段等输入的命中容错。
     normalized_chars: list[str] = []
-    for char in text:
+    for char in normalized_text:
         if char.isspace():
             continue
 
@@ -76,6 +80,38 @@ def normalize_search_text(text: str) -> str:
             normalized_chars.append(char)
 
     return ''.join(normalized_chars)
+
+
+# 针对长关键词构建片段，用于全文本未精确命中时的分段兜底匹配。
+def build_keyword_fragments(normalized_keyword: str) -> list[str]:
+    keyword_length = len(normalized_keyword)
+    if keyword_length < 24:
+        return []
+
+    candidate_lengths = sorted(
+        {
+            min(keyword_length, 72),
+            min(keyword_length, 56),
+            min(keyword_length, 40),
+            min(keyword_length, 28)
+        },
+        reverse=True
+    )
+    fragments: list[str] = []
+    for fragment_length in candidate_lengths:
+        if fragment_length < MANUAL_FRAGMENT_MIN_LENGTH or fragment_length >= keyword_length:
+            continue
+
+        offset_candidates = [0, max((keyword_length - fragment_length) // 2, 0), keyword_length - fragment_length]
+        for offset in offset_candidates:
+            fragment = normalized_keyword[offset:offset + fragment_length]
+            if len(fragment) < MANUAL_FRAGMENT_MIN_LENGTH:
+                continue
+            if fragment in fragments:
+                continue
+            fragments.append(fragment)
+
+    return fragments
 
 
 # 提取指定页范围内的单词信息，供定向命中定位使用。
@@ -232,8 +268,9 @@ def locate_keyword_near_page(
     if not normalized_keyword:
         return []
 
+    range_start_page_num = max(1, start_page_num - MANUAL_HIT_LOOKBACK_PAGES)
     end_page_num = min(pdf_doc.page_count, start_page_num + MANUAL_HIT_LOOKAHEAD_PAGES)
-    word_items = extract_words_in_page_range(pdf_doc, start_page_num, end_page_num)
+    word_items = extract_words_in_page_range(pdf_doc, range_start_page_num, end_page_num)
     if not word_items:
         return []
 
@@ -274,6 +311,33 @@ def locate_keyword_near_page(
 
     if first_fallback_match and first_fallback_range:
         return build_rect_segments_from_match(token_positions, first_fallback_range[0], first_fallback_range[1])
+
+    # 第二层兜底：长关键词拆分片段后匹配，减少复制长句时因细微差异导致的全量失败。
+    first_fragment_range: tuple[int, int] | None = None
+    for fragment in build_keyword_fragments(normalized_keyword):
+        search_from = 0
+        while True:
+            fragment_index = searchable_text.find(fragment, search_from)
+            if fragment_index < 0:
+                break
+
+            fragment_end = fragment_index + len(fragment)
+            matched_words = [
+                dict(position['word'])
+                for position in token_positions
+                if int(position['start']) < fragment_end and int(position['end']) > fragment_index
+            ]
+            if matched_words:
+                if any(int(word['page_num']) == start_page_num for word in matched_words):
+                    return build_rect_segments_from_match(token_positions, fragment_index, fragment_end)
+
+                if first_fragment_range is None:
+                    first_fragment_range = (fragment_index, fragment_end)
+
+            search_from = fragment_index + 1
+
+    if first_fragment_range is not None:
+        return build_rect_segments_from_match(token_positions, first_fragment_range[0], first_fragment_range[1])
 
     # 兜底：支持英文不完整单词输入，按“单词内包含”返回矩形。
     # 例如输入 "symlin" 也可命中 "symlinkat"。

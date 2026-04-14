@@ -1,4 +1,4 @@
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import PdfDocument, PdfHighlightHit, PdfIngestJob, PdfPageMeta
@@ -12,7 +12,10 @@ async def list_highlight_hits(
     pdf_id: str | None,
     keyword: str | None
 ) -> tuple[int, list[tuple[PdfHighlightHit, PdfDocument]]]:
-    filters = []
+    filters = [
+        # 列表仅展示 group 锚点，避免同一测试项的多段矩形在列表中重复铺开。
+        or_(PdfHighlightHit.group_id.is_(None), PdfHighlightHit.id == PdfHighlightHit.group_id)
+    ]
     if pdf_id:
         filters.append(PdfHighlightHit.pdf_id == pdf_id)
     if keyword:

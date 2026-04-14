@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Input, InputNumber, Space, Table, Typography } from 'antd';
+import { Alert, Button, Card, Input, InputNumber, Space, Switch, Table, Typography } from 'antd';
 import { getRequestErrorMessage } from '../../api/http';
 import { fetchHighlightHits } from '../../api/hits';
 import { appendManualHits, createPdfUploadJob } from '../../api/pdf';
@@ -44,6 +44,7 @@ export default function HitListPage() {
   const [pdfId, setPdfId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [manualItems, setManualItems] = useState<ManualHighlightDraftItem[]>([createDraftItem()]);
+  const [uploadToOss, setUploadToOss] = useState(false);
   const [localError, setLocalError] = useState('');
   const [lastSubmittedJob, setLastSubmittedJob] = useState<PdfUploadJobCreateResult | null>(null);
 
@@ -66,7 +67,8 @@ export default function HitListPage() {
   const columns = useMemo(() => createHitColumns(navigate), [navigate]);
 
   const uploadMutation = useMutation({
-    mutationFn: ({ file }: { file: File }) => createPdfUploadJob(file),
+    mutationFn: ({ file, shouldUploadToOss }: { file: File; shouldUploadToOss: boolean }) =>
+      createPdfUploadJob(file, [], shouldUploadToOss),
     onSuccess: (result) => {
       setPdfId(result.pdfId);
       setPage(1);
@@ -77,8 +79,8 @@ export default function HitListPage() {
   });
 
   const appendMutation = useMutation({
-    mutationFn: ({ targetPdfId, items }: { targetPdfId: string; items: ManualHighlightInputItem[] }) =>
-      appendManualHits(targetPdfId, items),
+    mutationFn: ({ targetPdfId, items, shouldUploadToOss }: { targetPdfId: string; items: ManualHighlightInputItem[]; shouldUploadToOss: boolean }) =>
+      appendManualHits(targetPdfId, items, shouldUploadToOss),
     onSuccess: (result) => {
       setPage(1);
       setKeyword('');
@@ -120,7 +122,7 @@ export default function HitListPage() {
     }
 
     setLocalError('');
-    uploadMutation.mutate({ file: selectedFile });
+    uploadMutation.mutate({ file: selectedFile, shouldUploadToOss: uploadToOss });
   }
 
   function handleAppendManualItems() {
@@ -137,7 +139,7 @@ export default function HitListPage() {
     }
 
     setLocalError('');
-    appendMutation.mutate({ targetPdfId, items });
+    appendMutation.mutate({ targetPdfId, items, shouldUploadToOss: uploadToOss });
   }
 
   return (
@@ -161,6 +163,13 @@ export default function HitListPage() {
                 description={`文档ID：${lastSubmittedJob.pdfId}。处理中期间列表会自动轮询更新。`}
               />
             ) : null}
+            <Space>
+              <Typography.Text>上传到 OSS</Typography.Text>
+              <Switch checked={uploadToOss} onChange={setUploadToOss} />
+              <Typography.Text type="secondary">
+                {uploadToOss ? '已启用：上传后可测试 OSS 直连预览' : '未启用：仅使用本地文件预览'}
+              </Typography.Text>
+            </Space>
 
             <StyledUploadGrid>
               <StyledUploadField>

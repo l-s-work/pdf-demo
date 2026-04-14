@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 class IngestRequest(BaseModel):
     localPath: str = Field(description='本地 PDF 文件绝对路径')
     keywords: list[str] = Field(default_factory=list, description='待提取关键词列表')
+    uploadToOss: bool = Field(default=True, description='是否上传到 OSS')
 
 
 # 手工录入的高亮测试项。
@@ -16,6 +17,7 @@ class ManualHighlightInputItem(BaseModel):
 # 手工高亮测试批量请求结构。
 class ManualHighlightBatchRequest(BaseModel):
     items: list[ManualHighlightInputItem] = Field(min_length=1, description='手工测试项列表')
+    uploadToOss: bool = Field(default=True, description='是否将文档同步到 OSS')
 
 
 # 浏览器上传任务创建返回结构。

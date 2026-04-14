@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Empty, Space, Spin, Typography } from "antd";
+import { Alert, Button, Card, Empty, Segmented, Space, Spin, Typography } from "antd";
 import { getRequestErrorMessage, resolveRequestUrl } from "../../api/http";
+import { fetchHighlightGroupHits } from "../../api/hits";
 import { fetchPdfMeta, fetchPdfPreviewUrl } from "../../api/pdf";
 import PdfVirtualViewer from "../../components/pdf/PdfVirtualViewer";
 import { useViewerStore } from "../../store/viewerStore";
+import type { HighlightHitItem, PdfPreviewSourceMode } from "../../types/pdf";
 import { buildPreviewUrl } from "../../utils/pdf/buildPreviewUrl";
 import { pdfDocumentManager } from "../../utils/pdf/pdfDocumentManager";
 import { StyledContainer, StyledViewerWrapper } from "./styles";
@@ -21,6 +23,7 @@ export default function PdfViewerPage() {
   const { currentPage } = useViewerStore();
   const state = (location.state ?? {}) as PdfViewerLocationState;
   const hit = state.hit;
+  const [previewSourceMode, setPreviewSourceMode] = useState<PdfPreviewSourceMode>("auto");
   const [previewNonce, setPreviewNonce] = useState(() => Date.now());
   const [isColdReloading, setIsColdReloading] = useState(false);
 
@@ -41,10 +44,20 @@ export default function PdfViewerPage() {
     isLoading: isPreviewUrlLoading,
     error: previewUrlError,
   } = useQuery({
-    queryKey: ["pdf-preview-url", pdfId, previewNonce],
-    queryFn: ({ signal }) => fetchPdfPreviewUrl(pdfId, { signal }),
+    queryKey: ["pdf-preview-url", pdfId, previewSourceMode, previewNonce],
+    queryFn: ({ signal }) => fetchPdfPreviewUrl(pdfId, previewSourceMode, { signal }),
     enabled: Boolean(pdfId),
     staleTime: 0,
+  });
+
+  const {
+    data: groupHits,
+    error: groupHitsError,
+  } = useQuery({
+    queryKey: ["highlight-group-hits", hit?.groupId],
+    queryFn: ({ signal }) => fetchHighlightGroupHits(String(hit?.groupId), { signal }),
+    enabled: Boolean(hit?.groupId),
+    staleTime: 1000 * 60,
   });
 
   const activeHits = useMemo(() => {
@@ -52,13 +65,17 @@ export default function PdfViewerPage() {
       return [];
     }
 
-    // 预览页遵循 per-hit 语义：单条命中仅渲染一个矩形。
+    // 列表仍保持 per-hit，但预览页可按 groupId 拉取同组命中恢复连贯高亮。
+    if (Array.isArray(groupHits) && groupHits.length > 0) {
+      return groupHits.filter((item) => item.pageNum > 0 && item.w > 0 && item.h > 0);
+    }
+
     if (hit.pageNum > 0 && hit.w > 0 && hit.h > 0) {
-      return [hit];
+      return [hit as HighlightHitItem];
     }
 
     return [];
-  }, [hit]);
+  }, [groupHits, hit]);
 
   const targetPageNum = useMemo(() => {
     if (activeHits.length > 0) {
@@ -113,6 +130,12 @@ export default function PdfViewerPage() {
 
   const previewSourceLabel = useMemo(() => {
     if (!previewData) {
+      if (previewSourceMode === "local") {
+        return "预览来源：后端代理文件流（强制本地）";
+      }
+      if (previewSourceMode === "oss") {
+        return "预览来源：OSS 签名直链（强制 OSS）";
+      }
       return "预览来源：后端代理文件流（回退模式）";
     }
 
@@ -121,7 +144,7 @@ export default function PdfViewerPage() {
     }
 
     return "预览来源：后端代理文件流";
-  }, [previewData]);
+  }, [previewData, previewSourceMode]);
 
   async function handleColdReload() {
     if (!pdfId) {
@@ -157,6 +180,16 @@ export default function PdfViewerPage() {
             <Button loading={isColdReloading} onClick={handleColdReload}>
               冷启动重载
             </Button>
+            <Segmented<PdfPreviewSourceMode>
+              size="small"
+              value={previewSourceMode}
+              onChange={(value) => setPreviewSourceMode(value)}
+              options={[
+                { label: "自动", value: "auto" },
+                { label: "本地", value: "local" },
+                { label: "OSS", value: "oss" },
+              ]}
+            />
             <Typography.Text type="secondary">
               {previewSourceLabel}
             </Typography.Text>
@@ -183,8 +216,17 @@ export default function PdfViewerPage() {
             type="warning"
             message={getRequestErrorMessage(
               previewUrlError,
-              "获取 OSS 签名链接失败，已自动回退后端代理预览",
+              previewSourceMode === "auto"
+                ? "获取 OSS 签名链接失败，已自动回退后端代理预览"
+                : "获取预览地址失败",
             )}
+            showIcon
+          />
+        ) : null}
+        {groupHitsError ? (
+          <Alert
+            type="warning"
+            message={getRequestErrorMessage(groupHitsError, "加载同组高亮失败，已回退单点高亮")}
             showIcon
           />
         ) : null}

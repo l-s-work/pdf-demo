@@ -85,6 +85,9 @@ export interface PdfPreviewUrlResult {
   source: string;
 }
 
+// 预览来源模式：自动、强制本地代理、强制 OSS 直连。
+export type PdfPreviewSourceMode = 'auto' | 'local' | 'oss';
+
 // 统一响应包装类型。
 export interface ApiResponse<T> {
   code: number;

@@ -25,14 +25,15 @@ from app.utils.pdf_extract import (
 async def ingest_pdf_from_path(
     session: AsyncSession,
     source_path: Path,
-    keywords: list[str]
+    keywords: list[str],
+    upload_to_oss: bool = True
 ) -> str:
     if not source_path.exists():
         raise FileNotFoundError(f'源文件不存在: {source_path}')
 
     doc_id = f'doc_{uuid4().hex[:12]}'
     target_path = copy_pdf_to_storage(doc_id, source_path)
-    await _persist_full_scan_pdf_records(session, doc_id, source_path.name, target_path, keywords)
+    await _persist_full_scan_pdf_records(session, doc_id, source_path.name, target_path, keywords, upload_to_oss)
     return doc_id
 
 
@@ -53,7 +54,8 @@ async def ingest_pdf_with_manual_targets(
     pdf_id: str,
     file_name: str,
     target_path: Path,
-    items: list[dict[str, str | int]]
+    items: list[dict[str, str | int]],
+    upload_to_oss: bool = True
 ) -> dict[str, int | list[dict[str, str | int | list[int] | None]]]:
     pdf_doc = open_pdf_document(target_path)
 
@@ -61,7 +63,7 @@ async def ingest_pdf_with_manual_targets(
         document = await session.get(PdfDocument, pdf_id)
         if not document:
             object_key: str | None = None
-            if is_oss_ready():
+            if upload_to_oss and is_oss_ready():
                 object_key = resolve_pdf_object_key(pdf_id, file_name)
                 object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
                 if not object_exists:
@@ -91,7 +93,7 @@ async def ingest_pdf_with_manual_targets(
                     )
                 )
         else:
-            if is_oss_ready():
+            if upload_to_oss and is_oss_ready():
                 object_key = resolve_pdf_object_key(pdf_id, file_name, document.oss_object_key)
                 if not document.oss_object_key:
                     document.oss_object_key = object_key
@@ -203,13 +205,14 @@ async def _persist_full_scan_pdf_records(
     doc_id: str,
     file_name: str,
     target_path: Path,
-    keywords: list[str]
+    keywords: list[str],
+    upload_to_oss: bool = True
 ) -> None:
     pdf_doc = open_pdf_document(target_path)
 
     try:
         object_key: str | None = None
-        if is_oss_ready():
+        if upload_to_oss and is_oss_ready():
             object_key = resolve_pdf_object_key(doc_id, file_name)
             object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
             if not object_exists:

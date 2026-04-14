@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,27 +23,47 @@ from app.utils.range_utils import iter_file_range, parse_range_header
 router = APIRouter(prefix='/api/pdf', tags=['pdf-file'])
 
 
-# 获取预览地址：优先返回 OSS 签名直链，失败时回退后端代理。
+# 获取预览地址：支持 auto/local/oss 三种模式。
 @router.get('/{pdf_id}/preview-url', response_model=ApiResponse[PdfPreviewUrlData])
 async def get_pdf_preview_url(
     pdf_id: str,
+    preview_source: Literal['auto', 'local', 'oss'] = Query(default='auto', alias='previewSource'),
     session: AsyncSession = Depends(get_session)
 ) -> ApiResponse[PdfPreviewUrlData]:
     document = await get_document_by_id(session, pdf_id)
     if not document:
         raise HTTPException(status_code=404, detail='文档不存在')
 
-    if is_oss_ready():
-        object_key = resolve_pdf_object_key(document.id, document.file_name, document.oss_object_key)
-        object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
-        if object_exists:
-            signed_url = await run_in_threadpool(build_signed_get_url, object_key)
-            return ApiResponse(
-                data=PdfPreviewUrlData(
-                    previewUrl=signed_url,
-                    source='oss-signed'
-                )
+    if preview_source == 'local':
+        return ApiResponse(
+            data=PdfPreviewUrlData(
+                previewUrl=f'/api/pdf/{pdf_id}/file',
+                source='backend-proxy'
             )
+        )
+
+    if not is_oss_ready():
+        if preview_source == 'oss':
+            raise HTTPException(status_code=400, detail='OSS 未启用，无法返回直连预览地址')
+        return ApiResponse(
+            data=PdfPreviewUrlData(
+                previewUrl=f'/api/pdf/{pdf_id}/file',
+                source='backend-proxy'
+            )
+        )
+
+    object_key = resolve_pdf_object_key(document.id, document.file_name, document.oss_object_key)
+    object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
+    if object_exists:
+        signed_url = await run_in_threadpool(build_signed_get_url, object_key)
+        return ApiResponse(
+            data=PdfPreviewUrlData(
+                previewUrl=signed_url,
+                source='oss-signed'
+            )
+        )
+    if preview_source == 'oss':
+        raise HTTPException(status_code=404, detail='OSS 中未找到该文档，请改用本地预览或重新上传并启用 OSS')
 
     return ApiResponse(
         data=PdfPreviewUrlData(

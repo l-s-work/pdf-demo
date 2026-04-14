@@ -62,7 +62,7 @@ async def ingest_pdf(
         raise HTTPException(status_code=400, detail='localPath 文件不存在')
 
     keywords = payload.keywords if payload.keywords else ['test']
-    pdf_id = await ingest_pdf_from_path(session, source_path, keywords)
+    pdf_id = await ingest_pdf_from_path(session, source_path, keywords, upload_to_oss=payload.uploadToOss)
     return ApiResponse(data={'pdfId': pdf_id})
 
 
@@ -72,6 +72,7 @@ async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     items: str = Form(default='[]'),
+    upload_to_oss: bool = Form(default=True, alias='uploadToOss'),
     session: AsyncSession = Depends(get_session)
 ) -> ApiResponse[IngestJobCreateResult]:
     file_name = Path(file.filename or 'uploaded.pdf').name
@@ -91,7 +92,15 @@ async def upload_pdf(
         await file.close()
 
     job_id = f'job_{uuid4().hex[:16]}'
-    await create_ingest_job(session, job_id, pdf_id, safe_file_name, target_path, manual_items)
+    await create_ingest_job(
+        session,
+        job_id,
+        pdf_id,
+        safe_file_name,
+        target_path,
+        manual_items,
+        upload_to_oss=upload_to_oss
+    )
     background_tasks.add_task(process_ingest_job, job_id)
 
     return ApiResponse(
@@ -127,7 +136,7 @@ async def append_manual_hits(
         file_path = Path(latest_job.file_path)
 
     if not file_path.exists():
-        if not is_oss_ready():
+        if not payload.uploadToOss or not is_oss_ready():
             raise HTTPException(status_code=404, detail='PDF 文件不存在，请重新上传')
 
         try:
@@ -155,7 +164,8 @@ async def append_manual_hits(
         pdf_id=pdf_id,
         file_name=file_name,
         target_path=file_path,
-        items=[item.model_dump() for item in payload.items]
+        items=[item.model_dump() for item in payload.items],
+        upload_to_oss=payload.uploadToOss
     )
     background_tasks.add_task(process_ingest_job, job_id)
 
