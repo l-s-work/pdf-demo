@@ -13,7 +13,14 @@ import {
 import type { PdfPageCanvasProps } from './types';
 
 // 单页渲染组件：负责绘制页面 Canvas，并在命中页渲染高亮框。
-export default function PdfPageCanvas({ pageNum, scale, warmupPage, activeHits, onPageMeasured }: PdfPageCanvasProps) {
+export default function PdfPageCanvas({
+  pageNum,
+  scale,
+  warmupPage,
+  activeHits,
+  onPageMeasured,
+  onPrimaryHighlightReady
+}: PdfPageCanvasProps) {
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
@@ -268,7 +275,13 @@ export default function PdfPageCanvas({ pageNum, scale, warmupPage, activeHits, 
       }
 
       const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
-      setHighlightRects(pageHits.map((item) => toViewportRect(viewport, item)));
+      const pageHighlightRects = pageHits
+        .map((item) => toViewportRect(viewport, item))
+        .sort((left, right) => (left.top - right.top) || (left.left - right.left));
+      setHighlightRects(pageHighlightRects);
+      if (pageHighlightRects.length > 0) {
+        onPrimaryHighlightReady?.(pageNum, pageHighlightRects[0]);
+      }
     }
 
     void renderPage();
@@ -279,7 +292,7 @@ export default function PdfPageCanvas({ pageNum, scale, warmupPage, activeHits, 
       textLayerTaskRef.current = null;
       setSelectionRects([]);
     };
-  }, [activeHits, onPageMeasured, pageNum, scale, warmupPage]);
+  }, [activeHits, onPageMeasured, onPrimaryHighlightReady, pageNum, scale, warmupPage]);
 
   return (
     <StyledPageFrame ref={pageFrameRef}>

@@ -9,6 +9,7 @@ import {
   StyledPageSlot,
   StyledScrollContainer,
 } from "./styles";
+import type { ViewportRect } from "../HighlightOverlay";
 import type { PdfVirtualViewerProps } from "./types";
 import PdfPageCanvas from "./PdfPageCanvas";
 
@@ -30,6 +31,7 @@ export default function PdfVirtualViewer({
   const [measuredPageHeights, setMeasuredPageHeights] = useState<
     Record<number, number>
   >({});
+  const anchoredHighlightKeyRef = useRef<string | null>(null);
   const fallbackTargetPageNum = targetPageNum ?? activeHits?.[0]?.pageNum;
   const firstPageWidth = useMemo(() => {
     const firstPage =
@@ -41,6 +43,10 @@ export default function PdfVirtualViewer({
   useEffect(() => {
     setMeasuredPageHeights({});
   }, [pdfId]);
+
+  useEffect(() => {
+    anchoredHighlightKeyRef.current = null;
+  }, [activeHits, fallbackTargetPageNum, pdfId, scale]);
 
   useEffect(() => {
     const scrollElement = parentRef.current;
@@ -139,6 +145,38 @@ export default function PdfVirtualViewer({
     void Promise.all(pagesToWarmup.map((pageNum) => warmupPage(pageNum)));
   }, [pagesToWarmup, pdfDoc, warmupPage]);
 
+  const handlePrimaryHighlightReady = useCallback(
+    (pageNum: number, rect: ViewportRect) => {
+      const scrollElement = parentRef.current;
+      if (!scrollElement) {
+        return;
+      }
+
+      const anchorKey = `${pdfId}-${fallbackTargetPageNum ?? 1}-${scale}`;
+      if (anchoredHighlightKeyRef.current === anchorKey) {
+        return;
+      }
+
+      const targetVirtualItem = rowVirtualizer
+        .getVirtualItems()
+        .find((item) => item.index === pageNum - 1);
+      if (!targetVirtualItem) {
+        return;
+      }
+
+      const viewportAnchorTop = scrollElement.clientHeight * 0.25;
+      const highlightCenterOffset = rect.top + rect.height / 2;
+      const nextScrollTop = Math.max(
+        0,
+        targetVirtualItem.start + highlightCenterOffset - viewportAnchorTop,
+      );
+
+      scrollElement.scrollTo({ top: nextScrollTop, behavior: "auto" });
+      anchoredHighlightKeyRef.current = anchorKey;
+    },
+    [fallbackTargetPageNum, pdfId, rowVirtualizer, scale],
+  );
+
   return (
     <StyledContainer $viewerWidth={viewerWidth}>
       <StyledScrollContainer ref={parentRef}>
@@ -170,6 +208,7 @@ export default function PdfVirtualViewer({
                     warmupPage={warmupPage}
                     activeHits={activeHits}
                     onPageMeasured={handlePageMeasured}
+                    onPrimaryHighlightReady={handlePrimaryHighlightReady}
                   />
                 ) : null}
               </StyledPageSlot>

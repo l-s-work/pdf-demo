@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { PdfMetaData } from '../types/pdf';
 
@@ -12,6 +12,7 @@ interface UsePdfVirtualizerOptions {
 
 // 构建 PDF 页面虚拟滚动能力，并在首次进入时滚动到目标页。
 export function usePdfVirtualizer({ parentRef, meta, scale, measuredPageHeights, targetPageNum }: UsePdfVirtualizerOptions) {
+  const initialScrollKeyRef = useRef<string | null>(null);
   const firstPageMeta = meta.pageSizeList.find((item) => item.pageNum === 1) ?? meta.pageSizeList[0];
   const estimatedFirstPageHeight = firstPageMeta?.height ?? 842;
 
@@ -33,10 +34,19 @@ export function usePdfVirtualizer({ parentRef, meta, scale, measuredPageHeights,
   }, [rowVirtualizer, measuredPageHeights, scale]);
 
   useEffect(() => {
-    if (targetPageNum) {
-      rowVirtualizer.scrollToIndex(Math.max(0, targetPageNum - 1), { align: 'center' });
+    if (!targetPageNum) {
+      return;
     }
-  }, [rowVirtualizer, targetPageNum]);
+
+    const currentKey = `${meta.pdfId}-${targetPageNum}`;
+    if (initialScrollKeyRef.current === currentKey) {
+      return;
+    }
+
+    initialScrollKeyRef.current = currentKey;
+    // 首屏先稳定落到目标页顶部，后续再由高亮锚点做精确滚动。
+    rowVirtualizer.scrollToIndex(Math.max(0, targetPageNum - 1), { align: 'start' });
+  }, [meta.pdfId, rowVirtualizer, targetPageNum]);
 
   return rowVirtualizer;
 }
