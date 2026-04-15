@@ -255,23 +255,13 @@ def build_rect_segments_from_match(
     return merge_words_to_rect_segments(matched_word_items)
 
 
-# 在指定起始页附近定向定位关键词，并自动补齐跨行或跨页矩形。
-def locate_keyword_near_page(
-    pdf_doc: fitz.Document,
-    keyword: str,
-    start_page_num: int
+# 复用同一套匹配逻辑，在指定页附近或整份文档中查找关键词。
+def _locate_keyword_from_word_items(
+    word_items: list[dict[str, float | int | str]],
+    normalized_keyword: str,
+    start_page_num: int | None = None
 ) -> list[dict[str, float | int]]:
-    if start_page_num < 1 or start_page_num > pdf_doc.page_count:
-        return []
-
-    normalized_keyword = normalize_search_text(keyword)
-    if not normalized_keyword:
-        return []
-
-    range_start_page_num = max(1, start_page_num - MANUAL_HIT_LOOKBACK_PAGES)
-    end_page_num = min(pdf_doc.page_count, start_page_num + MANUAL_HIT_LOOKAHEAD_PAGES)
-    word_items = extract_words_in_page_range(pdf_doc, range_start_page_num, end_page_num)
-    if not word_items:
+    if not word_items or not normalized_keyword:
         return []
 
     searchable_text = ''
@@ -285,7 +275,6 @@ def locate_keyword_near_page(
             'word': word
         })
 
-    first_fallback_match: list[dict[str, float | int | str]] | None = None
     first_fallback_range: tuple[int, int] | None = None
     search_from = 0
     while True:
@@ -300,16 +289,18 @@ def locate_keyword_near_page(
             if int(position['start']) < match_end and int(position['end']) > match_index
         ]
         if matched_words:
+            if start_page_num is None:
+                return build_rect_segments_from_match(token_positions, match_index, match_end)
+
             if any(int(word['page_num']) == start_page_num for word in matched_words):
                 return build_rect_segments_from_match(token_positions, match_index, match_end)
 
-            if first_fallback_match is None and first_fallback_range is None:
-                first_fallback_match = matched_words
+            if first_fallback_range is None:
                 first_fallback_range = (match_index, match_end)
 
         search_from = match_index + 1
 
-    if first_fallback_match and first_fallback_range:
+    if first_fallback_range is not None:
         return build_rect_segments_from_match(token_positions, first_fallback_range[0], first_fallback_range[1])
 
     # 第二层兜底：长关键词拆分片段后匹配，减少复制长句时因细微差异导致的全量失败。
@@ -328,6 +319,9 @@ def locate_keyword_near_page(
                 if int(position['start']) < fragment_end and int(position['end']) > fragment_index
             ]
             if matched_words:
+                if start_page_num is None:
+                    return build_rect_segments_from_match(token_positions, fragment_index, fragment_end)
+
                 if any(int(word['page_num']) == start_page_num for word in matched_words):
                     return build_rect_segments_from_match(token_positions, fragment_index, fragment_end)
 
@@ -341,12 +335,16 @@ def locate_keyword_near_page(
 
     # 兜底：支持英文不完整单词输入，按“单词内包含”返回矩形。
     # 例如输入 "symlin" 也可命中 "symlinkat"。
-    same_page_positions = [
-        position
-        for position in token_positions
-        if int(dict(position['word'])['page_num']) == start_page_num
-    ]
-    for position in same_page_positions:
+    if start_page_num is None:
+        preferred_positions = token_positions
+    else:
+        preferred_positions = [
+            position
+            for position in token_positions
+            if int(dict(position['word'])['page_num']) == start_page_num
+        ]
+
+    for position in preferred_positions:
         word = dict(position['word'])
         word_text = str(word['normalized_text'])
         token_start = int(position['start'])
@@ -367,3 +365,35 @@ def locate_keyword_near_page(
             return build_rect_segments_from_match(token_positions, match_start, match_end)
 
     return []
+
+
+# 在指定起始页附近定向定位关键词，并自动补齐跨行或跨页矩形。
+def locate_keyword_near_page(
+    pdf_doc: fitz.Document,
+    keyword: str,
+    start_page_num: int
+) -> list[dict[str, float | int]]:
+    if start_page_num < 1 or start_page_num > pdf_doc.page_count:
+        return []
+
+    normalized_keyword = normalize_search_text(keyword)
+    if not normalized_keyword:
+        return []
+
+    range_start_page_num = max(1, start_page_num - MANUAL_HIT_LOOKBACK_PAGES)
+    end_page_num = min(pdf_doc.page_count, start_page_num + MANUAL_HIT_LOOKAHEAD_PAGES)
+    word_items = extract_words_in_page_range(pdf_doc, range_start_page_num, end_page_num)
+    return _locate_keyword_from_word_items(word_items, normalized_keyword, start_page_num)
+
+
+# 不限制页码，直接在整份文档中查找关键词，作为页码偏移过大时的兜底。
+def locate_keyword_anywhere(
+    pdf_doc: fitz.Document,
+    keyword: str
+) -> list[dict[str, float | int]]:
+    normalized_keyword = normalize_search_text(keyword)
+    if not normalized_keyword:
+        return []
+
+    word_items = extract_words_in_page_range(pdf_doc, 1, pdf_doc.page_count)
+    return _locate_keyword_from_word_items(word_items, normalized_keyword, None)

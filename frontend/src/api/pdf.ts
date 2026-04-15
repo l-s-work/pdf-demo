@@ -3,8 +3,8 @@ import type {
   ApiResponse,
   ManualHighlightInputItem,
   PdfMetaData,
-  PdfPreviewSourceMode,
   PdfPreviewUrlResult,
+  PdfSourceUrlResult,
   PdfUploadJobCreateResult
 } from '../types/pdf';
 
@@ -18,16 +18,21 @@ export async function fetchPdfMeta(pdfId: string, options?: RequestOptions): Pro
 // 获取 PDF 预览地址，优先返回 OSS 签名直链。
 export async function fetchPdfPreviewUrl(
   pdfId: string,
-  previewSource: PdfPreviewSourceMode = 'auto',
   options?: RequestOptions
 ): Promise<PdfPreviewUrlResult> {
   const response = await requestClient.get<ApiResponse<PdfPreviewUrlResult>>(`/api/pdf/${pdfId}/preview-url`, {
-    ...options,
-    params: {
-      ...(options?.params ?? {}),
-      previewSource
-    }
+    ...options
   });
+  return response.data;
+}
+
+
+// 获取 PDF 源文件下载地址，优先返回 OSS 签名直链。
+export async function fetchPdfSourceUrl(
+  pdfId: string,
+  options?: RequestOptions
+): Promise<PdfSourceUrlResult> {
+  const response = await requestClient.get<ApiResponse<PdfSourceUrlResult>>(`/api/pdf/${pdfId}/source-url`, options);
   return response.data;
 }
 
@@ -36,32 +41,14 @@ export async function fetchPdfPreviewUrl(
 export async function createPdfUploadJob(
   file: File,
   items: ManualHighlightInputItem[] = [],
-  uploadToOss = true,
   options?: RequestOptions<FormData>
 ): Promise<PdfUploadJobCreateResult> {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('uploadToOss', String(uploadToOss));
   if (items.length > 0) {
     formData.append('items', JSON.stringify(items));
   }
 
   const response = await requestClient.post<ApiResponse<PdfUploadJobCreateResult>, FormData>('/api/pdf/upload', formData, options);
-  return response.data;
-}
-
-
-// 给已上传文档追加手工页码关键词测试项。
-export async function appendManualHits(
-  pdfId: string,
-  items: ManualHighlightInputItem[],
-  uploadToOss = true,
-  options?: RequestOptions<{ items: ManualHighlightInputItem[]; uploadToOss: boolean }>
-): Promise<PdfUploadJobCreateResult> {
-  const response = await requestClient.post<ApiResponse<PdfUploadJobCreateResult>, { items: ManualHighlightInputItem[]; uploadToOss: boolean }>(
-    `/api/pdf/${pdfId}/manual-hits`,
-    { items, uploadToOss },
-    options
-  );
   return response.data;
 }

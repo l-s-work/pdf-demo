@@ -37,6 +37,8 @@ export interface PdfMetaData {
   totalPages: number;
   fileSize: number;
   isLinearized: boolean;
+  fileKind: string;
+  sourceObjectKey?: string | null;
   ossObjectKey?: string | null;
   // 仅保证包含第一页尺寸，其余页在前端渲染时逐步纠偏。
   pageSizeList: PageSizeItem[];
@@ -85,8 +87,11 @@ export interface PdfPreviewUrlResult {
   source: string;
 }
 
-// 预览来源模式：自动、强制本地代理、强制 OSS 直连。
-export type PdfPreviewSourceMode = 'auto' | 'local' | 'oss';
+// 源文件下载地址结果。
+export interface PdfSourceUrlResult {
+  sourceUrl: string;
+  source: string;
+}
 
 // 统一响应包装类型。
 export interface ApiResponse<T> {

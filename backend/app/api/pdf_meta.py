@@ -26,6 +26,8 @@ async def get_pdf_meta(
             totalPages=document.total_pages,
             fileSize=document.file_size,
             isLinearized=bool(document.is_linearized),
+            fileKind='docx' if document.file_name.lower().endswith('.docx') else 'pdf',
+            sourceObjectKey=document.file_path,
             ossObjectKey=document.oss_object_key,
             pageSizeList=[
                 PdfPageSizeItem(

@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.repositories.pdf_repository import count_unfinished_ingest_jobs, list_highlight_hits, list_highlight_hits_by_group_id
+from app.repositories.pdf_repository import (
+    count_unfinished_ingest_jobs,
+    list_highlight_hits,
+    list_highlight_hits_by_group_id,
+    list_test_hits_by_pdf_id
+)
 from app.schemas.common import ApiResponse
 from app.schemas.hit import HighlightHitItem, HighlightHitPage
 
@@ -28,7 +33,7 @@ async def get_highlight_hits(
                 hitId=hit.id,
                 pdfId=hit.pdf_id,
                 fileName=document.file_name,
-                previewUrl=f'/api/pdf/{hit.pdf_id}/file',
+                previewUrl=f'/api/pdf/{hit.pdf_id}/preview-url',
                 status='matched' if hit.w > 0 and hit.h > 0 else 'pending_coords',
                 pageNum=hit.page_num,
                 keyword=hit.keyword,
@@ -63,7 +68,34 @@ async def get_highlight_group_hits(
             hitId=hit.id,
             pdfId=hit.pdf_id,
             fileName=document.file_name,
-            previewUrl=f'/api/pdf/{hit.pdf_id}/file',
+            previewUrl=f'/api/pdf/{hit.pdf_id}/preview-url',
+            status='matched' if hit.w > 0 and hit.h > 0 else 'pending_coords',
+            pageNum=hit.page_num,
+            keyword=hit.keyword,
+            x=hit.x,
+            y=hit.y,
+            w=hit.w,
+            h=hit.h,
+            groupId=hit.group_id
+        )
+        for hit, document in rows
+    ]
+    return ApiResponse(data=items)
+
+
+# 查询文档下的全部测试项锚点，用于预览页左侧快速定位。
+@router.get('/pdf/{pdf_id}/test-hits', response_model=ApiResponse[list[HighlightHitItem]])
+async def get_pdf_test_hits(
+    pdf_id: str,
+    session: AsyncSession = Depends(get_session)
+) -> ApiResponse[list[HighlightHitItem]]:
+    rows = await list_test_hits_by_pdf_id(session, pdf_id)
+    items = [
+        HighlightHitItem(
+            hitId=hit.id,
+            pdfId=hit.pdf_id,
+            fileName=document.file_name,
+            previewUrl=f'/api/pdf/{hit.pdf_id}/preview-url',
             status='matched' if hit.w > 0 and hit.h > 0 else 'pending_coords',
             pageNum=hit.page_num,
             keyword=hit.keyword,

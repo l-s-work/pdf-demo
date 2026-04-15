@@ -9,6 +9,8 @@ export interface PdfVirtualViewerProps {
   viewerWidth?: number;
   activeHits?: HighlightHitItem[];
   targetPageNum?: number;
+  targetAnchorKey?: string;
+  preferStreaming?: boolean;
 }
 
 // 单页 Canvas 组件属性。

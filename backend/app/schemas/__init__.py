@@ -4,23 +4,21 @@ from .ingest import (
     IngestJobCreateResult,
     IngestJobResultItem,
     IngestJobStatusResult,
-    IngestRequest,
-    ManualHighlightBatchRequest,
     ManualHighlightInputItem
 )
-from .pdf import PdfMetaData, PdfPageSizeItem
+from .pdf import PdfMetaData, PdfPageSizeItem, PdfPreviewUrlData, PdfSourceUrlData
 
 __all__ = [
     'ApiResponse',
     'PaginationData',
     'HighlightHitItem',
     'HighlightHitPage',
-    'IngestRequest',
     'ManualHighlightInputItem',
-    'ManualHighlightBatchRequest',
     'IngestJobCreateResult',
     'IngestJobResultItem',
     'IngestJobStatusResult',
     'PdfMetaData',
-    'PdfPageSizeItem'
+    'PdfPageSizeItem',
+    'PdfPreviewUrlData',
+    'PdfSourceUrlData'
 ]

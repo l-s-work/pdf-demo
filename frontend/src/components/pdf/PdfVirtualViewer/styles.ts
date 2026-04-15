@@ -50,6 +50,9 @@ export const StyledPagePlaceholder = styled.div<{
   $pageWidth: number;
   $pageHeight: number;
 }>`
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   width: ${({ $pageWidth }) => `${$pageWidth}px`};
   height: ${({ $pageHeight }) => `${$pageHeight}px`};
   border-radius: 4px;

@@ -20,18 +20,28 @@ def normalize_oss_endpoint(endpoint: str) -> str:
     return f'https://{endpoint}'
 
 
-# 基于文档 ID 与文件名生成默认对象键。
-def build_pdf_object_key(pdf_id: str, file_name: str) -> str:
+# 基于文档 ID 与文件名生成原始文件对象键。
+def build_source_object_key(pdf_id: str, file_name: str) -> str:
     safe_file_name = Path(file_name).name or 'uploaded.pdf'
-    return f'{OSS_OBJECT_PREFIX}/{pdf_id}/{safe_file_name}'
+    return f'{OSS_OBJECT_PREFIX}/original/{pdf_id}/{safe_file_name}'
 
 
-# 优先使用已存储对象键，不存在时回退到默认对象键。
+# 基于文档 ID 生成线性化后的预览 PDF 对象键。
+def build_derived_pdf_object_key(pdf_id: str, revision: int = 1) -> str:
+    return f'{OSS_OBJECT_PREFIX}/derived/{pdf_id}/{revision}.pdf'
+
+
+# 基于文档 ID、版本和页码生成页面预览图对象键。
+def build_page_preview_object_key(pdf_id: str, page_num: int, revision: int = 1) -> str:
+    return f'{OSS_OBJECT_PREFIX}/preview/{pdf_id}/{revision}/page-{page_num}.png'
+
+
+# 优先使用已存储对象键，不存在时回退到原始文件对象键。
 def resolve_pdf_object_key(pdf_id: str, file_name: str, stored_object_key: str | None = None) -> str:
     if stored_object_key and stored_object_key.strip():
         return stored_object_key.strip()
 
-    return build_pdf_object_key(pdf_id, file_name)
+    return build_source_object_key(pdf_id, file_name)
 
 
 # 创建 OSS Bucket 客户端实例。
@@ -40,23 +50,56 @@ def create_oss_bucket() -> oss2.Bucket:
     return oss2.Bucket(auth, normalize_oss_endpoint(OSS_ENDPOINT), OSS_BUCKET_NAME)
 
 
-# 上传 PDF 到 OSS，并返回对象键。
-def upload_pdf_file_to_oss(pdf_id: str, file_name: str, file_path: Path) -> str:
+# 上传文件到 OSS，并返回对象键。
+def upload_file_to_oss(object_key: str, file_path: Path, content_type: str = 'application/octet-stream') -> str:
     if not is_oss_ready():
         raise RuntimeError('OSS 未配置完成，请检查 OSS_ENABLED / endpoint / bucket / AK / SK')
 
     if not file_path.exists():
-        raise FileNotFoundError(f'待上传 PDF 不存在: {file_path}')
+        raise FileNotFoundError(f'待上传文件不存在: {file_path}')
 
-    object_key = build_pdf_object_key(pdf_id, file_name)
     bucket = create_oss_bucket()
     with file_path.open('rb') as file_obj:
         bucket.put_object(
             object_key,
             file_obj,
-            headers={'Content-Type': 'application/pdf'}
+            headers={'Content-Type': content_type}
         )
     return object_key
+
+
+# 直接将文件流上传到 OSS，并返回对象键。
+def upload_stream_to_oss(object_key: str, file_obj, content_type: str = 'application/octet-stream') -> str:
+    if not is_oss_ready():
+        raise RuntimeError('OSS 未配置完成，请检查 OSS_ENABLED / endpoint / bucket / AK / SK')
+
+    bucket = create_oss_bucket()
+    bucket.put_object(
+        object_key,
+        file_obj,
+        headers={'Content-Type': content_type}
+    )
+    return object_key
+
+
+# 直接将字节内容上传到 OSS，并返回对象键。
+def upload_bytes_to_oss(object_key: str, payload: bytes, content_type: str = 'application/octet-stream') -> str:
+    if not is_oss_ready():
+        raise RuntimeError('OSS 未配置完成，请检查 OSS_ENABLED / endpoint / bucket / AK / SK')
+
+    bucket = create_oss_bucket()
+    bucket.put_object(
+        object_key,
+        payload,
+        headers={'Content-Type': content_type}
+    )
+    return object_key
+
+
+# 兼容旧代码的 PDF 上传包装器。
+def upload_pdf_file_to_oss(pdf_id: str, file_name: str, file_path: Path) -> str:
+    object_key = build_source_object_key(pdf_id, file_name)
+    return upload_file_to_oss(object_key, file_path, content_type='application/pdf')
 
 
 # 检查目标对象在 OSS 中是否存在。
@@ -81,8 +124,8 @@ def build_signed_get_url(object_key: str, expires_seconds: int | None = None) ->
     )
 
 
-# 从 OSS 下载 PDF 到本地目标路径。
-def download_pdf_file_from_oss(object_key: str, target_path: Path) -> Path:
+# 从 OSS 下载文件到本地目标路径。
+def download_oss_object_to_file(object_key: str, target_path: Path) -> Path:
     if not is_oss_ready():
         raise RuntimeError('OSS 未配置完成，无法下载文件')
 
@@ -90,3 +133,8 @@ def download_pdf_file_from_oss(object_key: str, target_path: Path) -> Path:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     bucket.get_object_to_file(object_key, str(target_path))
     return target_path
+
+
+# 兼容旧代码的 PDF 下载包装器。
+def download_pdf_file_from_oss(object_key: str, target_path: Path) -> Path:
+    return download_oss_object_to_file(object_key, target_path)

@@ -7,3 +7,5 @@ python-multipart==0.0.20
 PyMuPDF==1.25.5
 oss2==2.19.1
 python-dotenv==1.0.1
+python-docx==1.1.2
+reportlab==4.4.0

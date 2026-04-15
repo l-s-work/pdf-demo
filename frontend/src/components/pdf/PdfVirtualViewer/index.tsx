@@ -21,9 +21,11 @@ export default function PdfVirtualViewer({
   viewerWidth = 800,
   activeHits,
   targetPageNum,
+  targetAnchorKey,
+  preferStreaming = true,
 }: PdfVirtualViewerProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const { pdfDoc, error, warmupPage } = usePdfDocument(pdfId, pdfUrl);
+  const { pdfDoc, error, warmupPage } = usePdfDocument(pdfId, pdfUrl, preferStreaming);
   const { scale, setScale, setCurrentPage } = useViewerStore();
   const [measuredPageHeights, setMeasuredPageHeights] = useState<
     Record<number, number>
@@ -103,6 +105,7 @@ export default function PdfVirtualViewer({
     scale,
     measuredPageHeights,
     targetPageNum: fallbackTargetPageNum,
+    targetAnchorKey,
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();

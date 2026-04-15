@@ -11,7 +11,11 @@ interface UsePdfDocumentResult {
 }
 
 // 维护 PDF 文档加载与页面预热缓存。
-export function usePdfDocument(pdfId: string, pdfUrl: string): UsePdfDocumentResult {
+export function usePdfDocument(
+  pdfId: string,
+  pdfUrl: string,
+  preferStreaming = true,
+): UsePdfDocumentResult {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<AppRequestError | null>(null);
@@ -25,7 +29,9 @@ export function usePdfDocument(pdfId: string, pdfUrl: string): UsePdfDocumentRes
       setError(null);
 
       try {
-        const doc = await pdfDocumentManager.acquireDocument(pdfId, pdfUrl);
+        const doc = await pdfDocumentManager.acquireDocument(pdfId, pdfUrl, {
+          preferStreaming,
+        });
         if (!disposed) {
           setPdfDoc(doc);
         }
@@ -49,7 +55,7 @@ export function usePdfDocument(pdfId: string, pdfUrl: string): UsePdfDocumentRes
       disposed = true;
       pdfDocumentManager.releaseDocument(pdfId);
     };
-  }, [pdfId, pdfUrl]);
+  }, [pdfId, pdfUrl, preferStreaming]);
 
   // 预热指定页，促使 pdf.js 提前拉取当前页及附近页的相关 Range 数据。
   const warmupPage = useCallback(

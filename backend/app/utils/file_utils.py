@@ -42,17 +42,21 @@ def ensure_linearized_pdf_file(file_path: Path) -> bool:
     if not file_path.exists():
         raise FileNotFoundError(f'PDF 文件不存在: {file_path}')
 
-    if is_pdf_linearized(file_path):
-        return False
-
     temp_path = file_path.with_name(f'{file_path.name}.linearized.tmp')
     if temp_path.exists():
         temp_path.unlink()
 
     pdf_doc = fitz.open(file_path)
     try:
-        # 通过 linear=1 重新写入，生成适合 Range/首屏渐进加载的 PDF。
-        pdf_doc.save(temp_path, linear=1)
+        # 通过完整重建再线性化，尽量修正可能存在的坏 linearization dictionary。
+        pdf_doc.save(
+            temp_path,
+            garbage=4,
+            clean=1,
+            deflate=1,
+            use_objstms=0,
+            linear=1
+        )
     finally:
         pdf_doc.close()
 

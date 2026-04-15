@@ -7,6 +7,7 @@ import { toViewportRect } from '../../../utils/pdf/highlightCoordinates';
 import {
   StyledCanvas,
   StyledPageFrame,
+  StyledPagePlaceholder,
   StyledPagePreviewImage,
   StyledSelectionLayer,
   StyledSelectionRect,
@@ -38,12 +39,22 @@ export default function PdfPageCanvas({
   const [selectionRects, setSelectionRects] = useState<ViewportRect[]>([]);
   const [isPreviewImageReady, setIsPreviewImageReady] = useState(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
+  const latestOnPrimaryHighlightReadyRef = useRef(onPrimaryHighlightReady);
+  const lastPreviewHighlightSignatureRef = useRef<string | null>(null);
+  const lastCanvasHighlightSignatureRef = useRef<string | null>(null);
+  const hasPagePreviewImage = useMemo(
+    () => (activeHits ?? []).some((item) => item.pageNum === pageNum && item.w > 0 && item.h > 0),
+    [activeHits, pageNum]
+  );
   const previewImageUrl = useMemo(() => {
-    const normalizedScale = Math.max(0.1, Math.min(scale, 4));
+    if (!hasPagePreviewImage) {
+      return '';
+    }
+
     return resolveRequestUrl(
-      `/api/pdf/${pdfId}/page-preview?pageNum=${pageNum}&scale=${normalizedScale.toFixed(4)}`
+      `/api/pdf/${pdfId}/page-preview?pageNum=${pageNum}`
     );
-  }, [pdfId, pageNum, scale]);
+  }, [hasPagePreviewImage, pdfId, pageNum]);
 
   // 预览阶段直接用页原始尺寸把命中坐标映射到当前展示尺寸，确保高亮先于 PDF 真正绘制出现。
   const previewHighlightRects = useMemo(() => {
@@ -64,6 +75,17 @@ export default function PdfPageCanvas({
       }))
       .sort((left, right) => (left.top - right.top) || (left.left - right.left));
   }, [activeHits, pageHeight, pageNum, pageRawHeight, pageRawWidth, pageWidth]);
+
+  function buildRectSignature(rects: ViewportRect[]): string {
+    return rects
+      .map((rect) => [
+        rect.left.toFixed(2),
+        rect.top.toFixed(2),
+        rect.width.toFixed(2),
+        rect.height.toFixed(2),
+      ].join(','))
+      .join('|');
+  }
 
   function mergeSelectionRects(rects: ViewportRect[]): ViewportRect[] {
     const validRects = rects
@@ -253,21 +275,32 @@ export default function PdfPageCanvas({
   useEffect(() => {
     setIsPreviewImageReady(false);
     setIsCanvasReady(false);
+    lastPreviewHighlightSignatureRef.current = null;
+    lastCanvasHighlightSignatureRef.current = null;
   }, [pdfId, pageNum, scale]);
+
+  useEffect(() => {
+    latestOnPrimaryHighlightReadyRef.current = onPrimaryHighlightReady;
+  }, [onPrimaryHighlightReady]);
 
   useEffect(() => {
     if (!isPreviewImageReady || isCanvasReady) {
       return;
     }
 
+    const signature = buildRectSignature(previewHighlightRects);
+    if (lastPreviewHighlightSignatureRef.current === signature) {
+      return;
+    }
+
+    lastPreviewHighlightSignatureRef.current = signature;
     setHighlightRects(previewHighlightRects);
     if (previewHighlightRects.length > 0) {
-      onPrimaryHighlightReady?.(pageNum, previewHighlightRects[0]);
+      latestOnPrimaryHighlightReadyRef.current?.(pageNum, previewHighlightRects[0]);
     }
   }, [
     isCanvasReady,
     isPreviewImageReady,
-    onPrimaryHighlightReady,
     pageNum,
     previewHighlightRects
   ]);
@@ -342,9 +375,14 @@ export default function PdfPageCanvas({
       const pageHighlightRects = pageHits
         .map((item) => toViewportRect(viewport, item))
         .sort((left, right) => (left.top - right.top) || (left.left - right.left));
-      setHighlightRects(pageHighlightRects);
+      const highlightSignature = buildRectSignature(pageHighlightRects);
+      if (lastCanvasHighlightSignatureRef.current !== highlightSignature) {
+        lastCanvasHighlightSignatureRef.current = highlightSignature;
+        setHighlightRects(pageHighlightRects);
+      }
+
       if (pageHighlightRects.length > 0) {
-        onPrimaryHighlightReady?.(pageNum, pageHighlightRects[0]);
+        latestOnPrimaryHighlightReadyRef.current?.(pageNum, pageHighlightRects[0]);
       }
 
       if (textLayerElement) {
@@ -383,7 +421,6 @@ export default function PdfPageCanvas({
     activeHits,
     isDocumentReady,
     onPageMeasured,
-    onPrimaryHighlightReady,
     pageNum,
     previewHighlightRects,
     scale,
@@ -392,13 +429,20 @@ export default function PdfPageCanvas({
 
   return (
     <StyledPageFrame ref={pageFrameRef} $pageWidth={pageWidth} $pageHeight={pageHeight}>
-      <StyledPagePreviewImage
-        alt={`第 ${pageNum} 页预览`}
-        src={previewImageUrl}
-        onLoad={() => setIsPreviewImageReady(true)}
-        onError={() => setIsPreviewImageReady(true)}
-        $isVisible={!isCanvasReady}
-      />
+      {previewImageUrl ? (
+        <StyledPagePreviewImage
+          alt={`第 ${pageNum} 页预览`}
+          src={previewImageUrl}
+          onLoad={() => setIsPreviewImageReady(true)}
+          onError={() => setIsPreviewImageReady(true)}
+          $isVisible={!isCanvasReady}
+        />
+      ) : null}
+      {!isCanvasReady && !isPreviewImageReady ? (
+        <StyledPagePlaceholder $pageWidth={pageWidth} $pageHeight={pageHeight}>
+          正在加载页面...
+        </StyledPagePlaceholder>
+      ) : null}
       <StyledCanvas ref={canvasRef} $isVisible={isCanvasReady} />
       <StyledTextLayer ref={textLayerRef} />
       <StyledSelectionLayer>

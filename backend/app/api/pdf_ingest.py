@@ -9,24 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.settings import is_oss_ready
-from app.repositories.pdf_repository import (
-    count_unfinished_ingest_jobs,
-    get_document_by_id,
-    get_ingest_job_by_id,
-    get_latest_ingest_job_by_pdf_id
-)
+from app.models import PdfDocument
+from app.repositories.pdf_repository import get_ingest_job_by_id
 from app.schemas.common import ApiResponse
-from app.schemas.ingest import (
-    IngestJobCreateResult,
-    IngestJobStatusResult,
-    IngestRequest,
-    ManualHighlightBatchRequest,
-    ManualHighlightInputItem
-)
+from app.schemas.ingest import IngestJobCreateResult, IngestJobStatusResult, ManualHighlightInputItem
 from app.services.ingest_job_service import build_ingest_job_status, create_ingest_job, process_ingest_job
-from app.services.ingest_service import ingest_pdf_from_path, save_uploaded_pdf
-from app.utils.file_utils import build_pdf_storage_path
-from app.utils.oss_utils import download_pdf_file_from_oss, resolve_pdf_object_key
+from app.services.document_ingest_service import detect_source_file_kind
+from app.utils.oss_utils import build_derived_pdf_object_key, build_source_object_key, upload_stream_to_oss
 
 router = APIRouter(prefix='/api/pdf', tags=['pdf-ingest'])
 
@@ -53,17 +42,8 @@ def parse_manual_highlight_items(raw_items: str, allow_empty: bool = False) -> l
 
 # 通过本地路径触发 PDF 预处理入库。
 @router.post('/ingest', response_model=ApiResponse[dict[str, str]])
-async def ingest_pdf(
-    payload: IngestRequest,
-    session: AsyncSession = Depends(get_session)
-) -> ApiResponse[dict[str, str]]:
-    source_path = Path(payload.localPath)
-    if not source_path.exists():
-        raise HTTPException(status_code=400, detail='localPath 文件不存在')
-
-    keywords = payload.keywords if payload.keywords else ['test']
-    pdf_id = await ingest_pdf_from_path(session, source_path, keywords, upload_to_oss=payload.uploadToOss)
-    return ApiResponse(data={'pdfId': pdf_id})
+async def ingest_pdf() -> ApiResponse[dict[str, str]]:
+    raise HTTPException(status_code=410, detail='当前版本不再支持本地路径入库，请使用上传接口')
 
 
 # 创建浏览器上传任务，快速返回 jobId，后台再异步提取测试命中。
@@ -72,22 +52,51 @@ async def upload_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     items: str = Form(default='[]'),
-    upload_to_oss: bool = Form(default=True, alias='uploadToOss'),
     session: AsyncSession = Depends(get_session)
 ) -> ApiResponse[IngestJobCreateResult]:
     file_name = Path(file.filename or 'uploaded.pdf').name
-    if not file_name.lower().endswith('.pdf'):
-        raise HTTPException(status_code=400, detail='仅支持上传 PDF 文件')
+    safe_file_name = file_name
+    file_kind = detect_source_file_kind(file_name)
+    if file_kind not in {'pdf', 'docx'}:
+        raise HTTPException(status_code=400, detail='仅支持上传 PDF 或 Word 文件')
 
-    manual_items = parse_manual_highlight_items(items, allow_empty=True)
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail='上传文件为空')
+    if not is_oss_ready():
+        raise HTTPException(status_code=400, detail='当前版本要求启用 OSS 才能上传和预览')
+
+    manual_items = parse_manual_highlight_items(items, allow_empty=False)
+
+    pdf_id = f'doc_{uuid4().hex[:12]}'
+    source_object_key = build_source_object_key(pdf_id, safe_file_name)
+    derived_object_key = build_derived_pdf_object_key(pdf_id)
+
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+
+    content_type = (
+        'application/pdf'
+        if file_kind == 'pdf'
+        else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+
+    session.add(
+        PdfDocument(
+            id=pdf_id,
+            file_path=source_object_key,
+            file_name=safe_file_name,
+            oss_object_key=derived_object_key,
+            total_pages=0,
+            file_size=file_size,
+            is_linearized=0
+        )
+    )
 
     try:
-        pdf_id, safe_file_name, target_path = save_uploaded_pdf(file_name, file_bytes)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await run_in_threadpool(upload_stream_to_oss, source_object_key, file.file, content_type)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
     finally:
         await file.close()
 
@@ -97,75 +106,10 @@ async def upload_pdf(
         job_id,
         pdf_id,
         safe_file_name,
-        target_path,
+        source_object_key,
         manual_items,
-        upload_to_oss=upload_to_oss
-    )
-    background_tasks.add_task(process_ingest_job, job_id)
-
-    return ApiResponse(
-        data=IngestJobCreateResult(
-            jobId=job_id,
-            pdfId=pdf_id,
-            status='pending'
-        )
-    )
-
-
-# 给已上传文档追加手工测试项，后台异步提取命中。
-@router.post('/{pdf_id}/manual-hits', response_model=ApiResponse[IngestJobCreateResult])
-async def append_manual_hits(
-    pdf_id: str,
-    payload: ManualHighlightBatchRequest,
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_session)
-) -> ApiResponse[IngestJobCreateResult]:
-    pending_count = await count_unfinished_ingest_jobs(session, pdf_id)
-    if pending_count > 0:
-        raise HTTPException(status_code=409, detail='当前文档仍有处理中的任务，请稍后再提交')
-
-    document = await get_document_by_id(session, pdf_id)
-    if document:
-        file_name = document.file_name
-        file_path = Path(document.file_path)
-    else:
-        latest_job = await get_latest_ingest_job_by_pdf_id(session, pdf_id)
-        if not latest_job:
-            raise HTTPException(status_code=404, detail='文档不存在，请先上传 PDF')
-        file_name = latest_job.file_name
-        file_path = Path(latest_job.file_path)
-
-    if not file_path.exists():
-        if not payload.uploadToOss or not is_oss_ready():
-            raise HTTPException(status_code=404, detail='PDF 文件不存在，请重新上传')
-
-        try:
-            target_local_path = build_pdf_storage_path(pdf_id, file_name)
-            object_key = resolve_pdf_object_key(
-                pdf_id,
-                file_name,
-                document.oss_object_key if document else None
-            )
-            await run_in_threadpool(download_pdf_file_from_oss, object_key, target_local_path)
-            file_path = target_local_path
-
-            if document:
-                document.file_path = str(target_local_path.resolve())
-                if not document.oss_object_key:
-                    document.oss_object_key = object_key
-                await session.commit()
-        except Exception as exc:
-            raise HTTPException(status_code=404, detail='PDF 文件不存在，请重新上传') from exc
-
-    job_id = f'job_{uuid4().hex[:16]}'
-    await create_ingest_job(
-        session,
-        job_id=job_id,
-        pdf_id=pdf_id,
-        file_name=file_name,
-        target_path=file_path,
-        items=[item.model_dump() for item in payload.items],
-        upload_to_oss=payload.uploadToOss
+        source_file_kind=file_kind,
+        derived_object_key=derived_object_key
     )
     background_tasks.add_task(process_ingest_job, job_id)
 

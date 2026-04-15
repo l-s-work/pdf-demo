@@ -1,3 +1,3 @@
-from .entities import Base, PdfDocument, PdfHighlightHit, PdfIngestJob, PdfPageMeta
+from .entities import Base, PdfDocument, PdfHighlightHit, PdfIngestJob, PdfPageMeta, PdfPreviewResource
 
-__all__ = ['Base', 'PdfDocument', 'PdfPageMeta', 'PdfHighlightHit', 'PdfIngestJob']
+__all__ = ['Base', 'PdfDocument', 'PdfPageMeta', 'PdfPreviewResource', 'PdfHighlightHit', 'PdfIngestJob']

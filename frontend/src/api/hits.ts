@@ -23,3 +23,9 @@ export async function fetchHighlightGroupHits(groupId: string, options?: Request
   const response = await requestClient.get<ApiResponse<HighlightHitItem[]>>(`/api/highlight-groups/${groupId}`, options);
   return response.data;
 }
+
+// 获取指定文档的全部测试项锚点，用于预览页侧边栏。
+export async function fetchPdfTestHits(pdfId: string, options?: RequestOptions): Promise<HighlightHitItem[]> {
+  const response = await requestClient.get<ApiResponse<HighlightHitItem[]>>(`/api/pdf/${pdfId}/test-hits`, options);
+  return response.data;
+}

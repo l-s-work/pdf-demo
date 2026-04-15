@@ -4,6 +4,9 @@ import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdf
 const MAX_CACHED_PDF_COUNT = 5;
 const MAX_CACHED_PAGE_PROMISE_COUNT = 20;
 const PDF_WORKER_SRC = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+const PDF_RESOURCE_BASE_URL = '/pdfjs/';
+const PDF_CMAP_URL = `${PDF_RESOURCE_BASE_URL}cmaps/`;
+const PDF_STANDARD_FONT_DATA_URL = `${PDF_RESOURCE_BASE_URL}standard_fonts/`;
 
 // 统一配置 pdf.js worker，避免运行时出现 workerSrc 未指定错误。
 if (!GlobalWorkerOptions.workerSrc) {
@@ -62,9 +65,12 @@ class PdfDocumentManager {
         url: pdfUrl,
         // 线性化 PDF 优先启用流式解析，尽量让首屏在字节还在到达时就可见。
         disableStream: !preferStreaming,
+        disableRange: !preferStreaming,
         disableAutoFetch: true,
-        disableRange: false,
-        rangeChunkSize: preferStreaming ? 128 * 1024 : 256 * 1024
+        rangeChunkSize: preferStreaming ? 128 * 1024 : 256 * 1024,
+        cMapUrl: PDF_CMAP_URL,
+        cMapPacked: true,
+        standardFontDataUrl: PDF_STANDARD_FONT_DATA_URL
       });
 
       entry.loadingTask = loadingTask;

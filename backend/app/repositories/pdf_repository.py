@@ -1,7 +1,7 @@
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import PdfDocument, PdfHighlightHit, PdfIngestJob, PdfPageMeta
+from app.models import PdfDocument, PdfHighlightHit, PdfIngestJob, PdfPageMeta, PdfPreviewResource
 
 
 # 查询分页命中列表。
@@ -53,12 +53,46 @@ async def list_page_meta_by_pdf_id(session: AsyncSession, pdf_id: str) -> list[P
     return list((await session.execute(stmt)).scalars().all())
 
 
+# 查询指定页的预览资源对象键。
+async def get_preview_resource_object_key(
+    session: AsyncSession,
+    pdf_id: str,
+    version: int,
+    page_num: int
+) -> str | None:
+    stmt = (
+        select(PdfPreviewResource.preview_object_key)
+        .where(
+            PdfPreviewResource.pdf_id == pdf_id,
+            PdfPreviewResource.version == version,
+            PdfPreviewResource.page_num == page_num
+        )
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 # 按分组 ID 查询同一逻辑命中的全部矩形。
 async def list_highlight_hits_by_group_id(session: AsyncSession, group_id: str) -> list[tuple[PdfHighlightHit, PdfDocument]]:
     stmt = (
         select(PdfHighlightHit, PdfDocument)
         .join(PdfDocument, PdfDocument.id == PdfHighlightHit.pdf_id)
         .where(PdfHighlightHit.group_id == group_id)
+        .order_by(PdfHighlightHit.page_num.asc(), PdfHighlightHit.y.asc(), PdfHighlightHit.x.asc(), PdfHighlightHit.id.asc())
+    )
+    return list((await session.execute(stmt)).all())
+
+
+# 查询指定文档的全部测试项锚点，用于预览页侧边栏。
+async def list_test_hits_by_pdf_id(session: AsyncSession, pdf_id: str) -> list[tuple[PdfHighlightHit, PdfDocument]]:
+    filters = [
+        or_(PdfHighlightHit.group_id.is_(None), PdfHighlightHit.id == PdfHighlightHit.group_id),
+        PdfHighlightHit.pdf_id == pdf_id
+    ]
+    stmt = (
+        select(PdfHighlightHit, PdfDocument)
+        .join(PdfDocument, PdfDocument.id == PdfHighlightHit.pdf_id)
+        .where(and_(*filters))
         .order_by(PdfHighlightHit.page_num.asc(), PdfHighlightHit.y.asc(), PdfHighlightHit.x.asc(), PdfHighlightHit.id.asc())
     )
     return list((await session.execute(stmt)).all())

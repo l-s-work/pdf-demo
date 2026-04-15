@@ -8,11 +8,20 @@ interface UsePdfVirtualizerOptions {
   scale: number;
   measuredPageHeights?: Record<number, number>;
   targetPageNum?: number;
+  targetAnchorKey?: string;
 }
 
 // 构建 PDF 页面虚拟滚动能力，并在首次进入时滚动到目标页。
-export function usePdfVirtualizer({ parentRef, meta, scale, measuredPageHeights, targetPageNum }: UsePdfVirtualizerOptions) {
+export function usePdfVirtualizer({
+  parentRef,
+  meta,
+  scale,
+  measuredPageHeights,
+  targetPageNum,
+  targetAnchorKey,
+}: UsePdfVirtualizerOptions) {
   const initialScrollKeyRef = useRef<string | null>(null);
+  const lastMeasureKeyRef = useRef<string | null>(null);
   const firstPageMeta = meta.pageSizeList.find((item) => item.pageNum === 1) ?? meta.pageSizeList[0];
   const estimatedFirstPageHeight = firstPageMeta?.height ?? 842;
 
@@ -29,7 +38,19 @@ export function usePdfVirtualizer({ parentRef, meta, scale, measuredPageHeights,
   });
 
   useLayoutEffect(() => {
-    // 已渲染页回填真实尺寸后，主动触发虚拟高度重算。
+    // 仅在尺寸签名变化时重算，避免 measure 触发同步更新后再次进入死循环。
+    const measureKey = [
+      scale.toFixed(4),
+      ...Object.entries(measuredPageHeights ?? {})
+        .sort(([leftKey], [rightKey]) => Number(leftKey) - Number(rightKey))
+        .map(([pageNum, height]) => `${pageNum}:${height.toFixed(2)}`)
+    ].join('|');
+
+    if (lastMeasureKeyRef.current === measureKey) {
+      return;
+    }
+
+    lastMeasureKeyRef.current = measureKey;
     rowVirtualizer.measure();
   }, [rowVirtualizer, measuredPageHeights, scale]);
 
@@ -38,7 +59,7 @@ export function usePdfVirtualizer({ parentRef, meta, scale, measuredPageHeights,
       return;
     }
 
-    const currentKey = `${meta.pdfId}-${targetPageNum}-${scale.toFixed(4)}`;
+    const currentKey = `${meta.pdfId}-${targetPageNum}-${targetAnchorKey ?? 'none'}-${scale.toFixed(4)}`;
     if (initialScrollKeyRef.current === currentKey) {
       return;
     }
@@ -50,7 +71,7 @@ export function usePdfVirtualizer({ parentRef, meta, scale, measuredPageHeights,
     });
 
     return () => window.cancelAnimationFrame(nextFrame);
-  }, [meta.pdfId, rowVirtualizer, targetPageNum, scale]);
+  }, [meta.pdfId, rowVirtualizer, targetAnchorKey, targetPageNum, scale]);
 
   return rowVirtualizer;
 }
