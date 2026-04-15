@@ -19,12 +19,14 @@ export default function PdfPageCanvas({
   warmupPage,
   activeHits,
   onPageMeasured,
-  onPrimaryHighlightReady
+  onPrimaryHighlightReady,
+  onPageReady
 }: PdfPageCanvasProps) {
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
   const textLayerTaskRef = useRef<TextLayer | null>(null);
+  const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
   const [highlightRects, setHighlightRects] = useState<ViewportRect[]>([]);
   const [selectionRects, setSelectionRects] = useState<ViewportRect[]>([]);
 
@@ -238,6 +240,15 @@ export default function PdfPageCanvas({
       // 用真实渲染尺寸回填虚拟高度估算，逐页纠偏。
       onPageMeasured?.(pageNum, viewport.width / scale, viewport.height / scale);
 
+      const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
+      const pageHighlightRects = pageHits
+        .map((item) => toViewportRect(viewport, item))
+        .sort((left, right) => (left.top - right.top) || (left.left - right.left));
+      setHighlightRects(pageHighlightRects);
+      if (pageHighlightRects.length > 0) {
+        onPrimaryHighlightReady?.(pageNum, pageHighlightRects[0]);
+      }
+
       // 使用略高于设备像素比的超采样，降低文本边缘发糊感。
       const outputScale = Math.min(3, Math.max(1, (window.devicePixelRatio || 1) * 1.35));
       context.setTransform(1, 0, 0, 1, 0, 0);
@@ -247,7 +258,28 @@ export default function PdfPageCanvas({
       canvasElement.style.width = `${Math.floor(viewport.width)}px`;
       canvasElement.style.height = `${Math.floor(viewport.height)}px`;
       context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
-      await page.render({ canvasContext: context, viewport }).promise;
+      renderTaskRef.current?.cancel();
+      const renderTask = page.render({ canvasContext: context, viewport });
+      renderTaskRef.current = renderTask;
+
+      // 渲染任务已经启动，首屏内容通常会很快可见，先释放外层 loading。
+      onPageReady?.(pageNum);
+
+      try {
+        await renderTask.promise;
+      } catch (error) {
+        const errorName = typeof error === 'object' && error !== null && 'name' in error
+          ? String((error as { name?: string }).name ?? '')
+          : '';
+        if (disposed || errorName === 'RenderingCancelledException') {
+          return;
+        }
+        return;
+      } finally {
+        if (renderTaskRef.current === renderTask) {
+          renderTaskRef.current = null;
+        }
+      }
 
       if (disposed) {
         return;
@@ -273,26 +305,19 @@ export default function PdfPageCanvas({
         await textLayer.render();
         updateSelectionRects();
       }
-
-      const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
-      const pageHighlightRects = pageHits
-        .map((item) => toViewportRect(viewport, item))
-        .sort((left, right) => (left.top - right.top) || (left.left - right.left));
-      setHighlightRects(pageHighlightRects);
-      if (pageHighlightRects.length > 0) {
-        onPrimaryHighlightReady?.(pageNum, pageHighlightRects[0]);
-      }
     }
 
     void renderPage();
     return () => {
       // 阻止异步结果在组件卸载后继续回写。
       disposed = true;
+      renderTaskRef.current?.cancel();
+      renderTaskRef.current = null;
       textLayerTaskRef.current?.cancel();
       textLayerTaskRef.current = null;
       setSelectionRects([]);
     };
-  }, [activeHits, onPageMeasured, onPrimaryHighlightReady, pageNum, scale, warmupPage]);
+  }, [activeHits, onPageMeasured, onPageReady, onPrimaryHighlightReady, pageNum, scale, warmupPage]);
 
   return (
     <StyledPageFrame ref={pageFrameRef}>

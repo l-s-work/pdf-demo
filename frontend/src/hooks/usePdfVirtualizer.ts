@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { PdfMetaData } from '../types/pdf';
 
@@ -28,25 +28,29 @@ export function usePdfVirtualizer({ parentRef, meta, scale, measuredPageHeights,
     overscan: 3
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // 已渲染页回填真实尺寸后，主动触发虚拟高度重算。
     rowVirtualizer.measure();
   }, [rowVirtualizer, measuredPageHeights, scale]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!targetPageNum) {
       return;
     }
 
-    const currentKey = `${meta.pdfId}-${targetPageNum}`;
+    const currentKey = `${meta.pdfId}-${targetPageNum}-${scale.toFixed(4)}`;
     if (initialScrollKeyRef.current === currentKey) {
       return;
     }
 
     initialScrollKeyRef.current = currentKey;
-    // 首屏先稳定落到目标页顶部，后续再由高亮锚点做精确滚动。
-    rowVirtualizer.scrollToIndex(Math.max(0, targetPageNum - 1), { align: 'start' });
-  }, [meta.pdfId, rowVirtualizer, targetPageNum]);
+    // 等缩放稳定后再定位，避免首轮估算尺寸变化导致目标页跑偏。
+    const nextFrame = window.requestAnimationFrame(() => {
+      rowVirtualizer.scrollToIndex(Math.max(0, targetPageNum - 1), { align: 'start' });
+    });
+
+    return () => window.cancelAnimationFrame(nextFrame);
+  }, [meta.pdfId, rowVirtualizer, targetPageNum, scale]);
 
   return rowVirtualizer;
 }

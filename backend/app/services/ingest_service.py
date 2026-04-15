@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import PdfDocument, PdfHighlightHit, PdfPageMeta
 from app.core.settings import is_oss_ready
-from app.utils.file_utils import copy_pdf_to_storage, save_pdf_bytes_to_storage
+from app.utils.file_utils import copy_pdf_to_storage, ensure_linearized_pdf_file, save_pdf_bytes_to_storage
 from app.utils.oss_utils import (
     object_exists_in_oss,
     resolve_pdf_object_key,
@@ -57,6 +57,8 @@ async def ingest_pdf_with_manual_targets(
     items: list[dict[str, str | int]],
     upload_to_oss: bool = True
 ) -> dict[str, int | list[dict[str, str | int | list[int] | None]]]:
+    target_path = Path(target_path)
+    was_linearized = ensure_linearized_pdf_file(target_path)
     pdf_doc = open_pdf_document(target_path)
 
     try:
@@ -65,9 +67,7 @@ async def ingest_pdf_with_manual_targets(
             object_key: str | None = None
             if upload_to_oss and is_oss_ready():
                 object_key = resolve_pdf_object_key(pdf_id, file_name)
-                object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
-                if not object_exists:
-                    await run_in_threadpool(upload_pdf_file_to_oss, pdf_id, file_name, target_path)
+                await run_in_threadpool(upload_pdf_file_to_oss, pdf_id, file_name, target_path)
 
             session.add(
                 PdfDocument(
@@ -93,14 +93,21 @@ async def ingest_pdf_with_manual_targets(
                     )
                 )
         else:
+            document.file_path = str(target_path.resolve())
+            document.file_size = target_path.stat().st_size
+            document.is_linearized = 1
+
             if upload_to_oss and is_oss_ready():
                 object_key = resolve_pdf_object_key(pdf_id, file_name, document.oss_object_key)
                 if not document.oss_object_key:
                     document.oss_object_key = object_key
 
-                object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
-                if not object_exists:
+                if was_linearized:
                     await run_in_threadpool(upload_pdf_file_to_oss, pdf_id, file_name, target_path)
+                else:
+                    object_exists = await run_in_threadpool(object_exists_in_oss, object_key)
+                    if not object_exists:
+                        await run_in_threadpool(upload_pdf_file_to_oss, pdf_id, file_name, target_path)
 
             meta_count_stmt = select(PdfPageMeta.id).where(PdfPageMeta.pdf_id == pdf_id).limit(1)
             meta_exists = (await session.execute(meta_count_stmt)).first()

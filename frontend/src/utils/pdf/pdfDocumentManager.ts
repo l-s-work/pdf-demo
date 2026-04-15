@@ -50,9 +50,8 @@ class PdfDocumentManager {
     if (!entry.loadingPromise) {
       const loadingTask = getDocument({
         url: pdfUrl,
-        // 大文件测试场景下优先按 Range 分片拉取：
-        // 1) 首次打开先拿目标页相关分片，缩短“可见首屏”时间
-        // 2) 禁止自动预取整文件，避免首开退化成一次性全量下载
+        // 优先走 Range 分片，避免首个请求直接把整份 PDF 拉完。
+        // 这样首屏可以先取到目标页附近的必要分片，再按需补齐后续内容。
         disableStream: true,
         disableAutoFetch: true,
         disableRange: false,

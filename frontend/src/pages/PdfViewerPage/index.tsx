@@ -1,7 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Empty, Segmented, Space, Spin, Typography } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  Empty,
+  Segmented,
+  Space,
+  Spin,
+  Typography,
+} from "antd";
 import { getRequestErrorMessage, resolveRequestUrl } from "../../api/http";
 import { fetchHighlightGroupHits } from "../../api/hits";
 import { fetchPdfMeta, fetchPdfPreviewUrl } from "../../api/pdf";
@@ -23,9 +32,26 @@ export default function PdfViewerPage() {
   const { currentPage } = useViewerStore();
   const state = (location.state ?? {}) as PdfViewerLocationState;
   const hit = state.hit;
-  const [previewSourceMode, setPreviewSourceMode] = useState<PdfPreviewSourceMode>("auto");
+  const [previewSourceMode, setPreviewSourceMode] =
+    useState<PdfPreviewSourceMode>("local");
   const [previewNonce, setPreviewNonce] = useState(() => Date.now());
   const [isColdReloading, setIsColdReloading] = useState(false);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyMargin = document.body.style.margin;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.margin = "0";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.margin = previousBodyMargin;
+    };
+  }, []);
 
   // 获取文档轻量索引，用于虚拟页面尺寸计算。
   const {
@@ -45,17 +71,16 @@ export default function PdfViewerPage() {
     error: previewUrlError,
   } = useQuery({
     queryKey: ["pdf-preview-url", pdfId, previewSourceMode, previewNonce],
-    queryFn: ({ signal }) => fetchPdfPreviewUrl(pdfId, previewSourceMode, { signal }),
+    queryFn: ({ signal }) =>
+      fetchPdfPreviewUrl(pdfId, previewSourceMode, { signal }),
     enabled: Boolean(pdfId),
     staleTime: 0,
   });
 
-  const {
-    data: groupHits,
-    error: groupHitsError,
-  } = useQuery({
+  const { data: groupHits, error: groupHitsError } = useQuery({
     queryKey: ["highlight-group-hits", hit?.groupId],
-    queryFn: ({ signal }) => fetchHighlightGroupHits(String(hit?.groupId), { signal }),
+    queryFn: ({ signal }) =>
+      fetchHighlightGroupHits(String(hit?.groupId), { signal }),
     enabled: Boolean(hit?.groupId),
     staleTime: 1000 * 60,
   });
@@ -67,7 +92,9 @@ export default function PdfViewerPage() {
 
     // 列表仍保持 per-hit，但预览页可按 groupId 拉取同组命中恢复连贯高亮。
     if (Array.isArray(groupHits) && groupHits.length > 0) {
-      return groupHits.filter((item) => item.pageNum > 0 && item.w > 0 && item.h > 0);
+      return groupHits.filter(
+        (item) => item.pageNum > 0 && item.w > 0 && item.h > 0,
+      );
     }
 
     if (hit.pageNum > 0 && hit.w > 0 && hit.h > 0) {
@@ -78,11 +105,11 @@ export default function PdfViewerPage() {
   }, [groupHits, hit]);
 
   const targetPageNum = useMemo(() => {
-    if (activeHits.length > 0) {
-      return activeHits[0].pageNum;
-    }
     if (hit?.pageNum && hit.pageNum > 0) {
       return hit.pageNum;
+    }
+    if (activeHits.length > 0) {
+      return activeHits[0].pageNum;
     }
     return 1;
   }, [activeHits, hit?.pageNum]);
@@ -101,32 +128,29 @@ export default function PdfViewerPage() {
     return Math.min(Math.max(1, currentPage), meta.totalPages);
   }, [currentPage, meta]);
 
-  const previewUrl = useMemo(
-    () => {
-      if (!previewData && !previewUrlError) {
-        return "";
-      }
+  const previewUrl = useMemo(() => {
+    if (!previewData && !previewUrlError) {
+      return "";
+    }
 
-      if (!previewData) {
-        return buildPreviewUrl(pdfId, hit, previewNonce);
-      }
+    if (!previewData) {
+      return buildPreviewUrl(pdfId, hit, previewNonce);
+    }
 
-      const rawUrl = previewData.previewUrl;
-      const isAbsoluteUrl = /^https?:\/\//i.test(rawUrl);
-      const isBackendProxy = previewData.source === "backend-proxy";
-      const proxyUrl =
-        isBackendProxy && previewNonce > 0
-          ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}_open=${previewNonce}`
-          : rawUrl;
+    const rawUrl = previewData.previewUrl;
+    const isAbsoluteUrl = /^https?:\/\//i.test(rawUrl);
+    const isBackendProxy = previewData.source === "backend-proxy";
+    const proxyUrl =
+      isBackendProxy && previewNonce > 0
+        ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}_open=${previewNonce}`
+        : rawUrl;
 
-      if (isAbsoluteUrl) {
-        return proxyUrl;
-      }
+    if (isAbsoluteUrl) {
+      return proxyUrl;
+    }
 
-      return resolveRequestUrl(proxyUrl);
-    },
-    [hit, pdfId, previewData, previewNonce, previewUrlError],
-  );
+    return resolveRequestUrl(proxyUrl);
+  }, [hit, pdfId, previewData, previewNonce, previewUrlError]);
 
   const previewSourceLabel = useMemo(() => {
     if (!previewData) {
@@ -226,7 +250,10 @@ export default function PdfViewerPage() {
         {groupHitsError ? (
           <Alert
             type="warning"
-            message={getRequestErrorMessage(groupHitsError, "加载同组高亮失败，已回退单点高亮")}
+            message={getRequestErrorMessage(
+              groupHitsError,
+              "加载同组高亮失败，已回退单点高亮",
+            )}
             showIcon
           />
         ) : null}

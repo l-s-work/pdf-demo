@@ -19,4 +19,5 @@ export interface PdfPageCanvasProps {
   activeHits?: HighlightHitItem[];
   onPageMeasured?: (pageNum: number, width: number, height: number) => void;
   onPrimaryHighlightReady?: (pageNum: number, rect: ViewportRect) => void;
+  onPageReady?: (pageNum: number) => void;
 }

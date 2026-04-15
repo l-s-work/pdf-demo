@@ -2,6 +2,7 @@ import styled from "styled-components";
 
 // Viewer 最外层容器。
 export const StyledContainer = styled.div<{ $viewerWidth: number }>`
+  position: relative;
   width: ${({ $viewerWidth }) => `${$viewerWidth}px`};
   max-width: 100%;
   margin: 0 auto;
@@ -16,9 +17,22 @@ export const StyledContainer = styled.div<{ $viewerWidth: number }>`
 export const StyledScrollContainer = styled.div`
   position: relative;
   height: 100%;
-  overflow-y: auto;
+  overflow-y: scroll;
   overflow-x: hidden;
   padding: 12px 0;
+  scrollbar-gutter: stable;
+`;
+
+// 首屏加载遮罩，居中展示加载状态。
+export const StyledLoadingOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(250, 250, 250, 0.78);
+  backdrop-filter: blur(1px);
 `;
 
 // 单页占位槽位。

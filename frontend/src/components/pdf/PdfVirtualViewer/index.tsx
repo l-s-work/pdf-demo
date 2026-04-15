@@ -6,6 +6,7 @@ import { useViewerStore } from "../../../store/viewerStore";
 import { getRequestErrorMessage } from "../../../api/http";
 import {
   StyledContainer,
+  StyledLoadingOverlay,
   StyledPageSlot,
   StyledScrollContainer,
 } from "./styles";
@@ -23,15 +24,19 @@ export default function PdfVirtualViewer({
   targetPageNum,
 }: PdfVirtualViewerProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const { pdfDoc, isLoading, error, warmupPage } = usePdfDocument(
-    pdfId,
-    pdfUrl,
-  );
+  const { pdfDoc, error, warmupPage } = usePdfDocument(pdfId, pdfUrl);
   const { scale, setScale, setCurrentPage } = useViewerStore();
   const [measuredPageHeights, setMeasuredPageHeights] = useState<
     Record<number, number>
   >({});
+  const [isInitialPageReady, setIsInitialPageReady] = useState(false);
+  const [highlightAlignVersion, setHighlightAlignVersion] = useState(0);
   const anchoredHighlightKeyRef = useRef<string | null>(null);
+  const hasAutoAlignedHighlightRef = useRef(false);
+  const currentHighlightAnchorRef = useRef<{
+    pageNum: number;
+    rect: ViewportRect;
+  } | null>(null);
   const fallbackTargetPageNum = targetPageNum ?? activeHits?.[0]?.pageNum;
   const firstPageWidth = useMemo(() => {
     const firstPage =
@@ -45,7 +50,16 @@ export default function PdfVirtualViewer({
   }, [pdfId]);
 
   useEffect(() => {
+    setIsInitialPageReady(false);
+    setHighlightAlignVersion(0);
+    hasAutoAlignedHighlightRef.current = false;
+    currentHighlightAnchorRef.current = null;
+  }, [pdfId, pdfUrl]);
+
+  useEffect(() => {
     anchoredHighlightKeyRef.current = null;
+    hasAutoAlignedHighlightRef.current = false;
+    currentHighlightAnchorRef.current = null;
   }, [activeHits, fallbackTargetPageNum, pdfId, scale]);
 
   useEffect(() => {
@@ -145,10 +159,75 @@ export default function PdfVirtualViewer({
     void Promise.all(pagesToWarmup.map((pageNum) => warmupPage(pageNum)));
   }, [pagesToWarmup, pdfDoc, warmupPage]);
 
-  const handlePrimaryHighlightReady = useCallback(
-    (pageNum: number, rect: ViewportRect) => {
+  const alignHighlightAnchor = useCallback(
+    (anchor: { pageNum: number; rect: ViewportRect }): boolean => {
       const scrollElement = parentRef.current;
       if (!scrollElement) {
+        return false;
+      }
+
+      const targetVirtualItem = rowVirtualizer
+        .getVirtualItems()
+        .find((item) => item.index === anchor.pageNum - 1);
+      if (!targetVirtualItem) {
+        rowVirtualizer.scrollToIndex(Math.max(0, anchor.pageNum - 1), {
+          align: "start",
+        });
+        return false;
+      }
+
+      const viewportAnchorTop = scrollElement.clientHeight * 0.25;
+      const highlightCenterOffset = anchor.rect.top + anchor.rect.height / 2;
+      const nextScrollTop = Math.max(
+        0,
+        targetVirtualItem.start + highlightCenterOffset - viewportAnchorTop,
+      );
+
+      if (Math.abs(scrollElement.scrollTop - nextScrollTop) > 2) {
+        scrollElement.scrollTo({ top: nextScrollTop, behavior: "auto" });
+      }
+
+      return true;
+    },
+    [rowVirtualizer],
+  );
+
+  useEffect(() => {
+    const anchor = currentHighlightAnchorRef.current;
+    if (!anchor || hasAutoAlignedHighlightRef.current) {
+      return;
+    }
+
+    const nextFrame = window.requestAnimationFrame(() => {
+      const aligned = alignHighlightAnchor(anchor);
+      if (aligned) {
+        hasAutoAlignedHighlightRef.current = true;
+        anchoredHighlightKeyRef.current = `${pdfId}-${fallbackTargetPageNum ?? 1}-${scale}`;
+        currentHighlightAnchorRef.current = null;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(nextFrame);
+  }, [
+    alignHighlightAnchor,
+    highlightAlignVersion,
+    measuredPageHeights,
+    scale,
+    rowVirtualizer,
+    virtualItems,
+  ]);
+
+  const handlePrimaryHighlightReady = useCallback(
+    (pageNum: number, rect: ViewportRect) => {
+      if (hasAutoAlignedHighlightRef.current) {
+        return;
+      }
+
+      if (pageNum !== fallbackTargetPageNum) {
+        return;
+      }
+
+      if (!parentRef.current) {
         return;
       }
 
@@ -157,30 +236,32 @@ export default function PdfVirtualViewer({
         return;
       }
 
-      const targetVirtualItem = rowVirtualizer
-        .getVirtualItems()
-        .find((item) => item.index === pageNum - 1);
-      if (!targetVirtualItem) {
-        return;
+      currentHighlightAnchorRef.current = {
+        pageNum,
+        rect,
+      };
+      setHighlightAlignVersion((currentVersion) => currentVersion + 1);
+
+      const aligned = alignHighlightAnchor({
+        pageNum,
+        rect,
+      });
+      if (aligned) {
+        anchoredHighlightKeyRef.current = anchorKey;
+        hasAutoAlignedHighlightRef.current = true;
+        currentHighlightAnchorRef.current = null;
       }
-
-      const viewportAnchorTop = scrollElement.clientHeight * 0.25;
-      const highlightCenterOffset = rect.top + rect.height / 2;
-      const nextScrollTop = Math.max(
-        0,
-        targetVirtualItem.start + highlightCenterOffset - viewportAnchorTop,
-      );
-
-      scrollElement.scrollTo({ top: nextScrollTop, behavior: "auto" });
-      anchoredHighlightKeyRef.current = anchorKey;
     },
-    [fallbackTargetPageNum, pdfId, rowVirtualizer, scale],
+    [alignHighlightAnchor, fallbackTargetPageNum, pdfId, scale],
   );
+
+  const handleInitialPageReady = useCallback(() => {
+    setIsInitialPageReady(true);
+  }, []);
 
   return (
     <StyledContainer $viewerWidth={viewerWidth}>
       <StyledScrollContainer ref={parentRef}>
-        {isLoading ? <Spin tip="正在加载 PDF 文件..." /> : null}
         {error ? (
           <Alert
             type="error"
@@ -209,6 +290,7 @@ export default function PdfVirtualViewer({
                     activeHits={activeHits}
                     onPageMeasured={handlePageMeasured}
                     onPrimaryHighlightReady={handlePrimaryHighlightReady}
+                    onPageReady={handleInitialPageReady}
                   />
                 ) : null}
               </StyledPageSlot>
@@ -216,6 +298,11 @@ export default function PdfVirtualViewer({
           })}
         </div>
       </StyledScrollContainer>
+      {!error && !isInitialPageReady ? (
+        <StyledLoadingOverlay>
+          <Spin size="large" tip="正在加载 PDF 文件..." />
+        </StyledLoadingOverlay>
+      ) : null}
     </StyledContainer>
   );
 }
