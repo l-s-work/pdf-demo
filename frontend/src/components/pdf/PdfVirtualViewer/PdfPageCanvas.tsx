@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { TextLayer } from 'pdfjs-dist';
 import type { ViewportRect } from '../HighlightOverlay';
 import HighlightOverlay from '../HighlightOverlay';
+import { resolveRequestUrl } from '../../../api/http';
 import { toViewportRect } from '../../../utils/pdf/highlightCoordinates';
 import {
   StyledCanvas,
   StyledPageFrame,
+  StyledPagePreviewImage,
   StyledSelectionLayer,
   StyledSelectionRect,
   StyledTextLayer
@@ -14,13 +16,18 @@ import type { PdfPageCanvasProps } from './types';
 
 // 单页渲染组件：负责绘制页面 Canvas，并在命中页渲染高亮框。
 export default function PdfPageCanvas({
+  pdfId,
   pageNum,
   scale,
+  isDocumentReady,
+  pageWidth,
+  pageHeight,
+  pageRawWidth,
+  pageRawHeight,
   warmupPage,
   activeHits,
   onPageMeasured,
-  onPrimaryHighlightReady,
-  onPageReady
+  onPrimaryHighlightReady
 }: PdfPageCanvasProps) {
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -29,6 +36,34 @@ export default function PdfPageCanvas({
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
   const [highlightRects, setHighlightRects] = useState<ViewportRect[]>([]);
   const [selectionRects, setSelectionRects] = useState<ViewportRect[]>([]);
+  const [isPreviewImageReady, setIsPreviewImageReady] = useState(false);
+  const [isCanvasReady, setIsCanvasReady] = useState(false);
+  const previewImageUrl = useMemo(() => {
+    const normalizedScale = Math.max(0.1, Math.min(scale, 4));
+    return resolveRequestUrl(
+      `/api/pdf/${pdfId}/page-preview?pageNum=${pageNum}&scale=${normalizedScale.toFixed(4)}`
+    );
+  }, [pdfId, pageNum, scale]);
+
+  // 预览阶段直接用页原始尺寸把命中坐标映射到当前展示尺寸，确保高亮先于 PDF 真正绘制出现。
+  const previewHighlightRects = useMemo(() => {
+    const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
+    if (pageHits.length === 0) {
+      return [];
+    }
+
+    const widthScale = pageRawWidth > 0 ? pageWidth / pageRawWidth : 1;
+    const heightScale = pageRawHeight > 0 ? pageHeight / pageRawHeight : 1;
+
+    return pageHits
+      .map((item) => ({
+        left: item.x * widthScale,
+        top: item.y * heightScale,
+        width: item.w * widthScale,
+        height: item.h * heightScale
+      }))
+      .sort((left, right) => (left.top - right.top) || (left.left - right.left));
+  }, [activeHits, pageHeight, pageNum, pageRawHeight, pageRawWidth, pageWidth]);
 
   function mergeSelectionRects(rects: ViewportRect[]): ViewportRect[] {
     const validRects = rects
@@ -216,9 +251,35 @@ export default function PdfPageCanvas({
   }, []);
 
   useEffect(() => {
+    setIsPreviewImageReady(false);
+    setIsCanvasReady(false);
+  }, [pdfId, pageNum, scale]);
+
+  useEffect(() => {
+    if (!isPreviewImageReady || isCanvasReady) {
+      return;
+    }
+
+    setHighlightRects(previewHighlightRects);
+    if (previewHighlightRects.length > 0) {
+      onPrimaryHighlightReady?.(pageNum, previewHighlightRects[0]);
+    }
+  }, [
+    isCanvasReady,
+    isPreviewImageReady,
+    onPrimaryHighlightReady,
+    pageNum,
+    previewHighlightRects
+  ]);
+
+  useEffect(() => {
     let disposed = false;
 
     async function renderPage() {
+      if (!isDocumentReady) {
+        return;
+      }
+
       const canvasElement = canvasRef.current;
       const frameElement = pageFrameRef.current;
       if (!canvasElement || !frameElement) {
@@ -240,15 +301,6 @@ export default function PdfPageCanvas({
       // 用真实渲染尺寸回填虚拟高度估算，逐页纠偏。
       onPageMeasured?.(pageNum, viewport.width / scale, viewport.height / scale);
 
-      const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
-      const pageHighlightRects = pageHits
-        .map((item) => toViewportRect(viewport, item))
-        .sort((left, right) => (left.top - right.top) || (left.left - right.left));
-      setHighlightRects(pageHighlightRects);
-      if (pageHighlightRects.length > 0) {
-        onPrimaryHighlightReady?.(pageNum, pageHighlightRects[0]);
-      }
-
       // 使用略高于设备像素比的超采样，降低文本边缘发糊感。
       const outputScale = Math.min(3, Math.max(1, (window.devicePixelRatio || 1) * 1.35));
       context.setTransform(1, 0, 0, 1, 0, 0);
@@ -262,8 +314,7 @@ export default function PdfPageCanvas({
       const renderTask = page.render({ canvasContext: context, viewport });
       renderTaskRef.current = renderTask;
 
-      // 渲染任务已经启动，首屏内容通常会很快可见，先释放外层 loading。
-      onPageReady?.(pageNum);
+      // 渲染任务已经启动，但高亮先等页面真正绘制完成，避免空白页上先出现标记。
 
       try {
         await renderTask.promise;
@@ -283,6 +334,17 @@ export default function PdfPageCanvas({
 
       if (disposed) {
         return;
+      }
+
+      setIsCanvasReady(true);
+
+      const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
+      const pageHighlightRects = pageHits
+        .map((item) => toViewportRect(viewport, item))
+        .sort((left, right) => (left.top - right.top) || (left.left - right.left));
+      setHighlightRects(pageHighlightRects);
+      if (pageHighlightRects.length > 0) {
+        onPrimaryHighlightReady?.(pageNum, pageHighlightRects[0]);
       }
 
       if (textLayerElement) {
@@ -317,11 +379,27 @@ export default function PdfPageCanvas({
       textLayerTaskRef.current = null;
       setSelectionRects([]);
     };
-  }, [activeHits, onPageMeasured, onPageReady, onPrimaryHighlightReady, pageNum, scale, warmupPage]);
+  }, [
+    activeHits,
+    isDocumentReady,
+    onPageMeasured,
+    onPrimaryHighlightReady,
+    pageNum,
+    previewHighlightRects,
+    scale,
+    warmupPage
+  ]);
 
   return (
-    <StyledPageFrame ref={pageFrameRef}>
-      <StyledCanvas ref={canvasRef} />
+    <StyledPageFrame ref={pageFrameRef} $pageWidth={pageWidth} $pageHeight={pageHeight}>
+      <StyledPagePreviewImage
+        alt={`第 ${pageNum} 页预览`}
+        src={previewImageUrl}
+        onLoad={() => setIsPreviewImageReady(true)}
+        onError={() => setIsPreviewImageReady(true)}
+        $isVisible={!isCanvasReady}
+      />
+      <StyledCanvas ref={canvasRef} $isVisible={isCanvasReady} />
       <StyledTextLayer ref={textLayerRef} />
       <StyledSelectionLayer>
         {selectionRects.map((rect, index) => (

@@ -21,12 +21,21 @@ interface PdfCacheEntry {
   lastAccessAt: number;
 }
 
+interface AcquireDocumentOptions {
+  // 线性化文档优先走流式加载，尽量提前首屏渲染。
+  preferStreaming?: boolean;
+}
+
 // 统一管理 PDFDocumentProxy 的缓存、复用、释放与 LRU 淘汰。
 class PdfDocumentManager {
   private readonly cache = new Map<string, PdfCacheEntry>();
 
   // 获取并持有一个 PDF 文档实例；同一 pdfId 优先复用缓存。
-  async acquireDocument(pdfId: string, pdfUrl: string): Promise<PDFDocumentProxy> {
+  async acquireDocument(
+    pdfId: string,
+    pdfUrl: string,
+    options: AcquireDocumentOptions = {}
+  ): Promise<PDFDocumentProxy> {
     let entry = this.cache.get(pdfId);
 
     if (entry && entry.pdfUrl !== pdfUrl) {
@@ -48,14 +57,14 @@ class PdfDocumentManager {
     }
 
     if (!entry.loadingPromise) {
+      const preferStreaming = options.preferStreaming ?? true;
       const loadingTask = getDocument({
         url: pdfUrl,
-        // 优先走 Range 分片，避免首个请求直接把整份 PDF 拉完。
-        // 这样首屏可以先取到目标页附近的必要分片，再按需补齐后续内容。
-        disableStream: true,
+        // 线性化 PDF 优先启用流式解析，尽量让首屏在字节还在到达时就可见。
+        disableStream: !preferStreaming,
         disableAutoFetch: true,
         disableRange: false,
-        rangeChunkSize: 256 * 1024
+        rangeChunkSize: preferStreaming ? 128 * 1024 : 256 * 1024
       });
 
       entry.loadingTask = loadingTask;

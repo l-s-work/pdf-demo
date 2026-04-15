@@ -45,17 +45,69 @@ export const StyledPageSlot = styled.div`
   padding: 8px 0;
 `;
 
+// 单页占位骨架，用于 PDF 仍在加载时提前展示页面轮廓。
+export const StyledPagePlaceholder = styled.div<{
+  $pageWidth: number;
+  $pageHeight: number;
+}>`
+  width: ${({ $pageWidth }) => `${$pageWidth}px`};
+  height: ${({ $pageHeight }) => `${$pageHeight}px`};
+  border-radius: 4px;
+  border: 1px solid rgba(217, 217, 217, 0.9);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.96)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(24, 144, 255, 0.05) 0,
+      rgba(24, 144, 255, 0.05) 14px,
+      rgba(24, 144, 255, 0.02) 14px,
+      rgba(24, 144, 255, 0.02) 28px
+    );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8c8c8c;
+`;
+
 // 单页画布外框。
-export const StyledPageFrame = styled.div`
+export const StyledPageFrame = styled.div<{
+  $pageWidth: number;
+  $pageHeight: number;
+}>`
   position: relative;
-  width: 100%;
+  width: ${({ $pageWidth }) => `${$pageWidth}px`};
+  height: ${({ $pageHeight }) => `${$pageHeight}px`};
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 `;
 
 // 画布样式。
-export const StyledCanvas = styled.canvas`
+export const StyledCanvas = styled.canvas<{ $isVisible: boolean }>`
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: block;
+  width: 100%;
+  height: 100%;
+  opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
+  transition: opacity 0.16s ease;
+`;
+
+// 页面预览图：在 PDF canvas 尚未绘制完成前先展示页面内容。
+export const StyledPagePreviewImage = styled.img<{ $isVisible: boolean }>`
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+  opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
+  transition: opacity 0.16s ease;
+  pointer-events: none;
+  user-select: none;
 `;
 
 // 自定义文本选区容器，替代浏览器默认选区视觉，减少重叠感。
@@ -77,6 +129,7 @@ export const StyledSelectionRect = styled.div`
 export const StyledTextLayer = styled.div`
   position: absolute;
   inset: 0;
+  z-index: 1;
   overflow: clip;
   line-height: 1;
   text-align: initial;

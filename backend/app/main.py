@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import hits_router, pdf_file_router, pdf_ingest_router, pdf_meta_router
+from app.api import hits_router, pdf_file_router, pdf_ingest_router, pdf_meta_router, pdf_preview_image_router
 from app.core.database import SessionLocal, engine, ensure_schema_compatibility
 from app.models import Base
 from app.services.pdf_storage_service import normalize_pdf_storage
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(hits_router)
 app.include_router(pdf_meta_router)
 app.include_router(pdf_file_router)
+app.include_router(pdf_preview_image_router)
 app.include_router(pdf_ingest_router)
 
 

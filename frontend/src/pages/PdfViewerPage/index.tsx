@@ -33,7 +33,7 @@ export default function PdfViewerPage() {
   const state = (location.state ?? {}) as PdfViewerLocationState;
   const hit = state.hit;
   const [previewSourceMode, setPreviewSourceMode] =
-    useState<PdfPreviewSourceMode>("local");
+    useState<PdfPreviewSourceMode>("auto");
   const [previewNonce, setPreviewNonce] = useState(() => Date.now());
   const [isColdReloading, setIsColdReloading] = useState(false);
 

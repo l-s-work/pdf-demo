@@ -13,11 +13,16 @@ export interface PdfVirtualViewerProps {
 
 // 单页 Canvas 组件属性。
 export interface PdfPageCanvasProps {
+  pdfId: string;
   pageNum: number;
   scale: number;
+  isDocumentReady: boolean;
+  pageWidth: number;
+  pageHeight: number;
+  pageRawWidth: number;
+  pageRawHeight: number;
   warmupPage: (pageNum: number) => Promise<import('pdfjs-dist/types/src/display/api').PDFPageProxy | null>;
   activeHits?: HighlightHitItem[];
   onPageMeasured?: (pageNum: number, width: number, height: number) => void;
   onPrimaryHighlightReady?: (pageNum: number, rect: ViewportRect) => void;
-  onPageReady?: (pageNum: number) => void;
 }

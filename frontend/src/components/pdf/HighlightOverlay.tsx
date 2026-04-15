@@ -10,6 +10,7 @@ export interface ViewportRect {
 
 const StyledOverlay = styled.div<ViewportRect>`
   position: absolute;
+  z-index: 2;
   left: ${(props) => `${props.left}px`};
   top: ${(props) => `${props.top}px`};
   width: ${(props) => `${props.width}px`};

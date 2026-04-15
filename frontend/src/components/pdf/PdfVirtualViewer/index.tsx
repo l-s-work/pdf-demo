@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Spin } from "antd";
+import { Alert } from "antd";
 import { usePdfDocument } from "../../../hooks/usePdfDocument";
 import { usePdfVirtualizer } from "../../../hooks/usePdfVirtualizer";
 import { useViewerStore } from "../../../store/viewerStore";
 import { getRequestErrorMessage } from "../../../api/http";
 import {
   StyledContainer,
-  StyledLoadingOverlay,
   StyledPageSlot,
   StyledScrollContainer,
 } from "./styles";
@@ -29,7 +28,6 @@ export default function PdfVirtualViewer({
   const [measuredPageHeights, setMeasuredPageHeights] = useState<
     Record<number, number>
   >({});
-  const [isInitialPageReady, setIsInitialPageReady] = useState(false);
   const [highlightAlignVersion, setHighlightAlignVersion] = useState(0);
   const anchoredHighlightKeyRef = useRef<string | null>(null);
   const hasAutoAlignedHighlightRef = useRef(false);
@@ -50,7 +48,6 @@ export default function PdfVirtualViewer({
   }, [pdfId]);
 
   useEffect(() => {
-    setIsInitialPageReady(false);
     setHighlightAlignVersion(0);
     hasAutoAlignedHighlightRef.current = false;
     currentHighlightAnchorRef.current = null;
@@ -112,6 +109,9 @@ export default function PdfVirtualViewer({
 
   const pagesToWarmup = useMemo(() => {
     const pageSet = new Set<number>();
+    const anchorPage = fallbackTargetPageNum ?? 1;
+
+    pageSet.add(anchorPage);
 
     for (const activeHit of activeHits ?? []) {
       for (
@@ -134,8 +134,17 @@ export default function PdfVirtualViewer({
       }
     }
 
-    return Array.from(pageSet).sort((left, right) => left - right);
-  }, [activeHits, meta.totalPages, virtualItems]);
+    return Array.from(pageSet)
+      .sort((left, right) => {
+        const leftDistance = Math.abs(left - anchorPage);
+        const rightDistance = Math.abs(right - anchorPage);
+        if (leftDistance !== rightDistance) {
+          return leftDistance - rightDistance;
+        }
+        return left - right;
+      })
+      .slice(0, 8);
+  }, [activeHits, fallbackTargetPageNum, meta.totalPages, virtualItems]);
 
   useEffect(() => {
     if (virtualItems.length === 0) {
@@ -155,8 +164,24 @@ export default function PdfVirtualViewer({
       return;
     }
 
-    // 提前预热当前页及附近页，帮助大文件在上下滚动时更快出图。
-    void Promise.all(pagesToWarmup.map((pageNum) => warmupPage(pageNum)));
+    let canceled = false;
+
+    // 先预热最关键的几页，避免并发过多导致首屏渲染被后续请求挤占。
+    const warmupSequentially = async () => {
+      for (const pageNum of pagesToWarmup) {
+        if (canceled) {
+          return;
+        }
+
+        await warmupPage(pageNum);
+      }
+    };
+
+    void warmupSequentially();
+
+    return () => {
+      canceled = true;
+    };
   }, [pagesToWarmup, pdfDoc, warmupPage]);
 
   const alignHighlightAnchor = useCallback(
@@ -255,10 +280,6 @@ export default function PdfVirtualViewer({
     [alignHighlightAnchor, fallbackTargetPageNum, pdfId, scale],
   );
 
-  const handleInitialPageReady = useCallback(() => {
-    setIsInitialPageReady(true);
-  }, []);
-
   return (
     <StyledContainer $viewerWidth={viewerWidth}>
       <StyledScrollContainer ref={parentRef}>
@@ -277,32 +298,43 @@ export default function PdfVirtualViewer({
         >
           {virtualItems.map((virtualItem) => {
             const pageNum = virtualItem.index + 1;
+            const pageMeta =
+              meta.pageSizeList.find((item) => item.pageNum === pageNum) ??
+              meta.pageSizeList[0];
+            const pageRawWidth = pageMeta?.width ?? firstPageWidth ?? 800;
+            const pageRawHeight = pageMeta?.height ?? pageMeta?.width ?? 842;
+            const pageWidth = Math.max(
+              1,
+              Math.round(pageRawWidth * scale),
+            );
+            const pageHeight = Math.max(
+              1,
+              Math.round(pageRawHeight * scale),
+            );
             return (
               <StyledPageSlot
                 key={virtualItem.key}
                 style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
-                {pdfDoc ? (
-                  <PdfPageCanvas
-                    pageNum={pageNum}
-                    scale={scale}
-                    warmupPage={warmupPage}
-                    activeHits={activeHits}
-                    onPageMeasured={handlePageMeasured}
-                    onPrimaryHighlightReady={handlePrimaryHighlightReady}
-                    onPageReady={handleInitialPageReady}
-                  />
-                ) : null}
+                <PdfPageCanvas
+                  pdfId={pdfId}
+                  pageNum={pageNum}
+                  scale={scale}
+                  isDocumentReady={Boolean(pdfDoc)}
+                  pageWidth={pageWidth}
+                  pageHeight={pageHeight}
+                  pageRawWidth={pageRawWidth}
+                  pageRawHeight={pageRawHeight}
+                  warmupPage={warmupPage}
+                  activeHits={activeHits}
+                  onPageMeasured={handlePageMeasured}
+                  onPrimaryHighlightReady={handlePrimaryHighlightReady}
+                />
               </StyledPageSlot>
             );
           })}
         </div>
       </StyledScrollContainer>
-      {!error && !isInitialPageReady ? (
-        <StyledLoadingOverlay>
-          <Spin size="large" tip="正在加载 PDF 文件..." />
-        </StyledLoadingOverlay>
-      ) : null}
     </StyledContainer>
   );
 }
