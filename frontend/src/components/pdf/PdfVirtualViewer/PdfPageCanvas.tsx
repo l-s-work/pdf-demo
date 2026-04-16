@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TextLayer } from 'pdfjs-dist';
 import type { ViewportRect } from '../HighlightOverlay';
 import HighlightOverlay from '../HighlightOverlay';
-import { resolveRequestUrl } from '../../../api/http';
 import { toViewportRect } from '../../../utils/pdf/highlightCoordinates';
 import {
   StyledCanvas,
   StyledPageFrame,
   StyledPagePlaceholder,
-  StyledPagePreviewImage,
   StyledSelectionLayer,
   StyledSelectionRect,
   StyledTextLayer
@@ -23,8 +21,6 @@ export default function PdfPageCanvas({
   isDocumentReady,
   pageWidth,
   pageHeight,
-  pageRawWidth,
-  pageRawHeight,
   warmupPage,
   activeHits,
   onPageMeasured,
@@ -37,45 +33,9 @@ export default function PdfPageCanvas({
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
   const [highlightRects, setHighlightRects] = useState<ViewportRect[]>([]);
   const [selectionRects, setSelectionRects] = useState<ViewportRect[]>([]);
-  const [isPreviewImageReady, setIsPreviewImageReady] = useState(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
   const latestOnPrimaryHighlightReadyRef = useRef(onPrimaryHighlightReady);
-  const lastPreviewHighlightSignatureRef = useRef<string | null>(null);
   const lastCanvasHighlightSignatureRef = useRef<string | null>(null);
-  const hasPagePreviewImage = useMemo(
-    () => (activeHits ?? []).some((item) => item.pageNum === pageNum && item.w > 0 && item.h > 0),
-    [activeHits, pageNum]
-  );
-  const previewImageUrl = useMemo(() => {
-    if (!hasPagePreviewImage) {
-      return '';
-    }
-
-    return resolveRequestUrl(
-      `/api/pdf/${pdfId}/page-preview?pageNum=${pageNum}`
-    );
-  }, [hasPagePreviewImage, pdfId, pageNum]);
-
-  // 预览阶段直接用页原始尺寸把命中坐标映射到当前展示尺寸，确保高亮先于 PDF 真正绘制出现。
-  const previewHighlightRects = useMemo(() => {
-    const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
-    if (pageHits.length === 0) {
-      return [];
-    }
-
-    const widthScale = pageRawWidth > 0 ? pageWidth / pageRawWidth : 1;
-    const heightScale = pageRawHeight > 0 ? pageHeight / pageRawHeight : 1;
-
-    return pageHits
-      .map((item) => ({
-        left: item.x * widthScale,
-        top: item.y * heightScale,
-        width: item.w * widthScale,
-        height: item.h * heightScale
-      }))
-      .sort((left, right) => (left.top - right.top) || (left.left - right.left));
-  }, [activeHits, pageHeight, pageNum, pageRawHeight, pageRawWidth, pageWidth]);
-
   function buildRectSignature(rects: ViewportRect[]): string {
     return rects
       .map((rect) => [
@@ -273,37 +233,13 @@ export default function PdfPageCanvas({
   }, []);
 
   useEffect(() => {
-    setIsPreviewImageReady(false);
     setIsCanvasReady(false);
-    lastPreviewHighlightSignatureRef.current = null;
     lastCanvasHighlightSignatureRef.current = null;
   }, [pdfId, pageNum, scale]);
 
   useEffect(() => {
     latestOnPrimaryHighlightReadyRef.current = onPrimaryHighlightReady;
   }, [onPrimaryHighlightReady]);
-
-  useEffect(() => {
-    if (!isPreviewImageReady || isCanvasReady) {
-      return;
-    }
-
-    const signature = buildRectSignature(previewHighlightRects);
-    if (lastPreviewHighlightSignatureRef.current === signature) {
-      return;
-    }
-
-    lastPreviewHighlightSignatureRef.current = signature;
-    setHighlightRects(previewHighlightRects);
-    if (previewHighlightRects.length > 0) {
-      latestOnPrimaryHighlightReadyRef.current?.(pageNum, previewHighlightRects[0]);
-    }
-  }, [
-    isCanvasReady,
-    isPreviewImageReady,
-    pageNum,
-    previewHighlightRects
-  ]);
 
   useEffect(() => {
     let disposed = false;
@@ -314,8 +250,7 @@ export default function PdfPageCanvas({
       }
 
       const canvasElement = canvasRef.current;
-      const frameElement = pageFrameRef.current;
-      if (!canvasElement || !frameElement) {
+      if (!canvasElement || !pageFrameRef.current) {
         return;
       }
 
@@ -422,23 +357,13 @@ export default function PdfPageCanvas({
     isDocumentReady,
     onPageMeasured,
     pageNum,
-    previewHighlightRects,
     scale,
     warmupPage
   ]);
 
   return (
     <StyledPageFrame ref={pageFrameRef} $pageWidth={pageWidth} $pageHeight={pageHeight}>
-      {previewImageUrl ? (
-        <StyledPagePreviewImage
-          alt={`第 ${pageNum} 页预览`}
-          src={previewImageUrl}
-          onLoad={() => setIsPreviewImageReady(true)}
-          onError={() => setIsPreviewImageReady(true)}
-          $isVisible={!isCanvasReady}
-        />
-      ) : null}
-      {!isCanvasReady && !isPreviewImageReady ? (
+      {!isCanvasReady ? (
         <StyledPagePlaceholder $pageWidth={pageWidth} $pageHeight={pageHeight}>
           正在加载页面...
         </StyledPagePlaceholder>

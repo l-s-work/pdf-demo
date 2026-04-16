@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -39,22 +39,6 @@ class PdfPageMeta(Base):
     rotation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     document: Mapped['PdfDocument'] = relationship(back_populates='page_meta')
-
-
-# PDF 预览资源表，记录页预览图在 OSS 中的对象键。
-class PdfPreviewResource(Base):
-    __tablename__ = 'pdf_preview_resources'
-    __table_args__ = (
-        UniqueConstraint('pdf_id', 'version', 'page_num', name='uq_pdf_preview_resource_page'),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    pdf_id: Mapped[str] = mapped_column(String(64), ForeignKey('pdf_documents.id'), index=True, nullable=False)
-    version: Mapped[int] = mapped_column(Integer, index=True, nullable=False, default=1)
-    page_num: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
-    preview_object_key: Mapped[str] = mapped_column(String(512), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 # per-hit 命中表，每条只记录一个高亮位置。

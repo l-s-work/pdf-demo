@@ -326,8 +326,6 @@ export default function PdfVirtualViewer({
                   isDocumentReady={Boolean(pdfDoc)}
                   pageWidth={pageWidth}
                   pageHeight={pageHeight}
-                  pageRawWidth={pageRawWidth}
-                  pageRawHeight={pageRawHeight}
                   warmupPage={warmupPage}
                   activeHits={activeHits}
                   onPageMeasured={handlePageMeasured}

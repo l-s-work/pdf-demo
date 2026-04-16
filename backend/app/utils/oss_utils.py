@@ -31,11 +31,6 @@ def build_derived_pdf_object_key(pdf_id: str, revision: int = 1) -> str:
     return f'{OSS_OBJECT_PREFIX}/derived/{pdf_id}/{revision}.pdf'
 
 
-# 基于文档 ID、版本和页码生成页面预览图对象键。
-def build_page_preview_object_key(pdf_id: str, page_num: int, revision: int = 1) -> str:
-    return f'{OSS_OBJECT_PREFIX}/preview/{pdf_id}/{revision}/page-{page_num}.png'
-
-
 # 优先使用已存储对象键，不存在时回退到原始文件对象键。
 def resolve_pdf_object_key(pdf_id: str, file_name: str, stored_object_key: str | None = None) -> str:
     if stored_object_key and stored_object_key.strip():

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -36,6 +37,27 @@ try:
     OSS_SIGN_EXPIRES_SECONDS = int(_get_env_value('OSS_SIGN_EXPIRES_SECONDS', '1800'))
 except ValueError:
     OSS_SIGN_EXPIRES_SECONDS = 1800
+
+
+# OCR 处理配置，供扫描件命中时兜底使用。
+OCR_LANGUAGE = _get_env_value('OCR_LANGUAGE', 'ch').strip() or 'ch'
+OCR_CACHE_DIR = _get_env_value(
+    'PADDLE_PDX_CACHE_HOME',
+    _get_env_value('PADDLE_OCR_BASE_DIR', str(BACKEND_ROOT / 'storage' / 'paddlex-cache'))
+).strip()
+OCR_CACHE_PATH = Path(OCR_CACHE_DIR)
+if not OCR_CACHE_PATH.is_absolute():
+    OCR_CACHE_PATH = (BACKEND_ROOT / OCR_CACHE_PATH).resolve()
+
+OCR_CACHE_PATH.mkdir(parents=True, exist_ok=True)
+OCR_CACHE_DIR = str(OCR_CACHE_PATH)
+os.environ.setdefault('PADDLE_PDX_CACHE_HOME', OCR_CACHE_DIR)
+os.environ.setdefault('PADDLE_OCR_BASE_DIR', OCR_CACHE_DIR)
+os.environ.setdefault('PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK', 'True')
+try:
+    OCR_DPI = int(_get_env_value('OCR_DPI', '150'))
+except ValueError:
+    OCR_DPI = 150
 
 
 # 判断 OSS 关键配置是否已准备完成。

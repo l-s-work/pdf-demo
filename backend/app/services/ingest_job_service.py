@@ -19,7 +19,7 @@ async def create_ingest_job(
     items: list[dict[str, str | int]],
     source_file_kind: str,
     derived_object_key: str,
-    preview_version: int = 1
+    derived_version: int = 1
 ) -> PdfIngestJob:
     job = PdfIngestJob(
         id=job_id,
@@ -33,7 +33,7 @@ async def create_ingest_job(
                 'fileKind': source_file_kind,
                 'sourceObjectKey': source_object_key,
                 'derivedObjectKey': derived_object_key,
-                'previewVersion': preview_version
+                'derivedVersion': derived_version
             },
             ensure_ascii=False
         )

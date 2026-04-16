@@ -8,6 +8,8 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+如果你之前已经装过较新的 Paddle 版本，建议先重建虚拟环境或卸载后重装，避免旧缓存和新依赖混在一起。
+
 ### 可选：启用阿里云 OSS（前端直连 + 后端签名）
 
 推荐在 `backend` 目录新建 `.env`（可由 `.env.example` 复制）：
@@ -26,7 +28,20 @@ OSS_ACCESS_KEY_ID=your-ak
 OSS_ACCESS_KEY_SECRET=your-sk
 OSS_OBJECT_PREFIX=pdf
 OSS_SIGN_EXPIRES_SECONDS=1800
+OCR_LANGUAGE=ch
+OCR_DPI=150
+# PADDLE_PDX_CACHE_HOME=C:\path\to\paddlex-cache
+# PADDLE_OCR_BASE_DIR=C:\path\to\paddlex-cache
+PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 ```
+
+### OCR 说明
+
+扫描件命中会在文本层为空时自动走 PaddleOCR 兜底。`OCR_LANGUAGE` 默认是 `ch`，适合中文为主并兼顾数字和英文；模型会自动缓存到 `backend/storage/paddlex-cache`，首次运行可能会自动下载模型。
+如果启动时不希望检查模型源，可保持 `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True`。
+当前项目建议使用 `paddleocr==3.2.0` 和 `paddlepaddle==3.2.0`，更稳一些。
+真正生效的缓存目录是 `PADDLE_PDX_CACHE_HOME`，旧的 `PADDLE_OCR_BASE_DIR` 只是兼容写法。
+如果写的是相对路径，会按 `backend` 目录解析。
 
 ## 2. 启动服务
 

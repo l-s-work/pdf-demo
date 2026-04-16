@@ -1,7 +1,7 @@
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import PdfDocument, PdfHighlightHit, PdfIngestJob, PdfPageMeta, PdfPreviewResource
+from app.models import PdfDocument, PdfHighlightHit, PdfIngestJob, PdfPageMeta
 
 
 # 查询分页命中列表。
@@ -51,25 +51,6 @@ async def get_document_by_id(session: AsyncSession, pdf_id: str) -> PdfDocument 
 async def list_page_meta_by_pdf_id(session: AsyncSession, pdf_id: str) -> list[PdfPageMeta]:
     stmt = select(PdfPageMeta).where(PdfPageMeta.pdf_id == pdf_id).order_by(PdfPageMeta.page_num.asc())
     return list((await session.execute(stmt)).scalars().all())
-
-
-# 查询指定页的预览资源对象键。
-async def get_preview_resource_object_key(
-    session: AsyncSession,
-    pdf_id: str,
-    version: int,
-    page_num: int
-) -> str | None:
-    stmt = (
-        select(PdfPreviewResource.preview_object_key)
-        .where(
-            PdfPreviewResource.pdf_id == pdf_id,
-            PdfPreviewResource.version == version,
-            PdfPreviewResource.page_num == page_num
-        )
-        .limit(1)
-    )
-    return (await session.execute(stmt)).scalar_one_or_none()
 
 
 # 按分组 ID 查询同一逻辑命中的全部矩形。

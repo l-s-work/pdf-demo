@@ -1,11 +1,17 @@
 from pathlib import Path
 import unicodedata
+import threading
 
 import fitz
+import numpy as np
+
+from app.core.settings import OCR_DPI, OCR_LANGUAGE
 
 MANUAL_HIT_LOOKAHEAD_PAGES = 2
 MANUAL_HIT_LOOKBACK_PAGES = 2
 MANUAL_FRAGMENT_MIN_LENGTH = 12
+_OCR_ENGINE_LOCK = threading.Lock()
+_OCR_ENGINE = None
 
 
 # 打开 PDF 文档对象。
@@ -41,6 +47,135 @@ def extract_first_page_meta(pdf_doc: fitz.Document) -> dict[str, float | int] | 
         'height': float(rect.height),
         'rotation': int(page.rotation)
     }
+
+
+# 获取 PaddleOCR 引擎实例，首次调用时再初始化。
+def get_ocr_engine():
+    global _OCR_ENGINE
+    if _OCR_ENGINE is not None:
+        return _OCR_ENGINE
+
+    with _OCR_ENGINE_LOCK:
+        if _OCR_ENGINE is not None:
+            return _OCR_ENGINE
+
+        try:
+            from paddleocr import PaddleOCR
+        except ImportError as exc:
+            raise RuntimeError('未安装 PaddleOCR，请先安装后端依赖') from exc
+
+        _OCR_ENGINE = PaddleOCR(
+            lang=OCR_LANGUAGE,
+            use_angle_cls=True
+        )
+        return _OCR_ENGINE
+
+
+# 预热 PaddleOCR 引擎，尽量在启动阶段完成模型加载。
+def warmup_ocr_engine() -> None:
+    ocr_engine = get_ocr_engine()
+    warmup_image = np.zeros((32, 32, 3), dtype=np.uint8)
+    ocr_engine.ocr(warmup_image)
+
+
+# 将 PDF 页面渲染成适合 OCR 的图像数组。
+def render_page_for_ocr(page: fitz.Page) -> np.ndarray:
+    scale = max(1.0, OCR_DPI / 72.0)
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+    image = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(pixmap.height, pixmap.width, pixmap.n)
+    if image.ndim == 2:
+        image = np.repeat(image[:, :, None], 3, axis=2)
+    elif image.shape[2] >= 3:
+        image = image[:, :, :3]
+
+    image = image[:, :, ::-1].copy()
+    return image
+
+
+# 将 PaddleOCR 返回结果转换为统一的词元结构。
+def normalize_ocr_result(page_result) -> list[dict[str, float | int | str]]:
+    if not page_result:
+        return []
+
+    if isinstance(page_result, list) and len(page_result) == 1 and isinstance(page_result[0], list):
+        maybe_lines = page_result[0]
+        if not maybe_lines:
+            return []
+        if isinstance(maybe_lines[0], (list, tuple)) and len(maybe_lines[0]) == 2:
+            page_result = maybe_lines
+
+    word_items: list[dict[str, float | int | str]] = []
+    for line_index, line in enumerate(page_result):
+        if not isinstance(line, (list, tuple)) or len(line) != 2:
+            continue
+
+        box, text_result = line
+        if not isinstance(text_result, (list, tuple)) or not text_result:
+            continue
+
+        text = str(text_result[0] or '').strip()
+        normalized_text = normalize_search_text(text)
+        if not normalized_text:
+            continue
+
+        points = list(box) if isinstance(box, (list, tuple)) else []
+        if len(points) < 4:
+            continue
+
+        xs = [float(point[0]) for point in points if isinstance(point, (list, tuple)) and len(point) >= 2]
+        ys = [float(point[1]) for point in points if isinstance(point, (list, tuple)) and len(point) >= 2]
+        if not xs or not ys:
+            continue
+
+        word_items.append({
+            'text': text,
+            'normalized_text': normalized_text,
+            'x0': min(xs),
+            'y0': min(ys),
+            'x1': max(xs),
+            'y1': max(ys),
+            'block_no': 0,
+            'line_no': line_index,
+            'word_no': 0
+        })
+
+    return word_items
+
+
+# 从单页提取文本词元，扫描件在文本层为空时自动走 PaddleOCR 兜底。
+def extract_words_from_page(page: fitz.Page) -> list[dict[str, float | int | str]]:
+    def normalize_words(word_rows: list[tuple[float, float, float, float, str, int, int, int]]) -> list[dict[str, float | int | str]]:
+        word_items: list[dict[str, float | int | str]] = []
+        for x0, y0, x1, y1, text, block_no, line_no, word_no in word_rows:
+            normalized_text = normalize_search_text(str(text))
+            if not normalized_text:
+                continue
+
+            word_items.append({
+                'text': str(text),
+                'normalized_text': normalized_text,
+                'x0': float(x0),
+                'y0': float(y0),
+                'x1': float(x1),
+                'y1': float(y1),
+                'block_no': int(block_no),
+                'line_no': int(line_no),
+                'word_no': int(word_no)
+            })
+        return word_items
+
+    normal_words = normalize_words(list(page.get_text('words', sort=True)))
+    if normal_words:
+        return normal_words
+
+    try:
+        ocr_engine = get_ocr_engine()
+        ocr_image = render_page_for_ocr(page)
+        ocr_result = ocr_engine.ocr(ocr_image)
+    except Exception as exc:
+        raise RuntimeError('当前页面疑似扫描件，但 PaddleOCR 初始化或识别失败') from exc
+
+    return normalize_ocr_result(ocr_result)
 
 
 # 按关键词提取每个矩形命中，满足 per-hit 单位置设计。
@@ -118,28 +253,22 @@ def build_keyword_fragments(normalized_keyword: str) -> list[str]:
 def extract_words_in_page_range(
     pdf_doc: fitz.Document,
     start_page_num: int,
-    end_page_num: int
+    end_page_num: int,
+    page_words_cache: dict[int, list[dict[str, float | int | str]]] | None = None
 ) -> list[dict[str, float | int | str]]:
     word_items: list[dict[str, float | int | str]] = []
+    cache = page_words_cache if page_words_cache is not None else {}
 
     for page_num in range(start_page_num, end_page_num + 1):
-        page = pdf_doc[page_num - 1]
-        for x0, y0, x1, y1, text, block_no, line_no, word_no in page.get_text('words', sort=True):
-            normalized_text = normalize_search_text(str(text))
-            if not normalized_text:
-                continue
+        cached_words = cache.get(page_num)
+        if cached_words is None:
+            cached_words = extract_words_from_page(pdf_doc[page_num - 1])
+            cache[page_num] = cached_words
 
+        for word in cached_words:
             word_items.append({
                 'page_num': page_num,
-                'text': str(text),
-                'normalized_text': normalized_text,
-                'x0': float(x0),
-                'y0': float(y0),
-                'x1': float(x1),
-                'y1': float(y1),
-                'block_no': int(block_no),
-                'line_no': int(line_no),
-                'word_no': int(word_no)
+                **word
             })
 
     return word_items
@@ -371,7 +500,8 @@ def _locate_keyword_from_word_items(
 def locate_keyword_near_page(
     pdf_doc: fitz.Document,
     keyword: str,
-    start_page_num: int
+    start_page_num: int,
+    page_words_cache: dict[int, list[dict[str, float | int | str]]] | None = None
 ) -> list[dict[str, float | int]]:
     if start_page_num < 1 or start_page_num > pdf_doc.page_count:
         return []
@@ -382,18 +512,19 @@ def locate_keyword_near_page(
 
     range_start_page_num = max(1, start_page_num - MANUAL_HIT_LOOKBACK_PAGES)
     end_page_num = min(pdf_doc.page_count, start_page_num + MANUAL_HIT_LOOKAHEAD_PAGES)
-    word_items = extract_words_in_page_range(pdf_doc, range_start_page_num, end_page_num)
+    word_items = extract_words_in_page_range(pdf_doc, range_start_page_num, end_page_num, page_words_cache)
     return _locate_keyword_from_word_items(word_items, normalized_keyword, start_page_num)
 
 
 # 不限制页码，直接在整份文档中查找关键词，作为页码偏移过大时的兜底。
 def locate_keyword_anywhere(
     pdf_doc: fitz.Document,
-    keyword: str
+    keyword: str,
+    page_words_cache: dict[int, list[dict[str, float | int | str]]] | None = None
 ) -> list[dict[str, float | int]]:
     normalized_keyword = normalize_search_text(keyword)
     if not normalized_keyword:
         return []
 
-    word_items = extract_words_in_page_range(pdf_doc, 1, pdf_doc.page_count)
+    word_items = extract_words_in_page_range(pdf_doc, 1, pdf_doc.page_count, page_words_cache)
     return _locate_keyword_from_word_items(word_items, normalized_keyword, None)

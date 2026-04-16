@@ -98,21 +98,6 @@ export const StyledCanvas = styled.canvas<{ $isVisible: boolean }>`
   transition: opacity 0.16s ease;
 `;
 
-// 页面预览图：在 PDF canvas 尚未绘制完成前先展示页面内容。
-export const StyledPagePreviewImage = styled.img<{ $isVisible: boolean }>`
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #fff;
-  opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
-  transition: opacity 0.16s ease;
-  pointer-events: none;
-  user-select: none;
-`;
-
 // 自定义文本选区容器，替代浏览器默认选区视觉，减少重叠感。
 export const StyledSelectionLayer = styled.div`
   position: absolute;
