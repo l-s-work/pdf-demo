@@ -7,7 +7,7 @@ import type { RequestOptions } from './types';
 // 创建统一 axios 客户端，供普通 JSON API 请求复用。
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000
+  timeout: 30000
 });
 
 axiosClient.interceptors.response.use(

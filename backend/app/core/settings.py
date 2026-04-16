@@ -15,7 +15,7 @@ ENV_VALUES = {
 
 # 读取环境变量字符串并做去空白处理。
 def _get_env_value(name: str, default: str = '') -> str:
-    return (ENV_VALUES.get(name, default) or '').strip()
+    return (os.environ.get(name, ENV_VALUES.get(name, default)) or '').strip()
 
 
 # 将环境变量值转换为布尔值。
@@ -58,6 +58,11 @@ try:
     OCR_DPI = int(_get_env_value('OCR_DPI', '150'))
 except ValueError:
     OCR_DPI = 150
+
+
+# worker 开发态热重载开关，仅用于本地调试。
+WORKER_RELOAD = _to_bool(_get_env_value('WORKER_RELOAD'), default=False)
+WORKER_RELOAD_PATHS = _get_env_value('WORKER_RELOAD_PATHS', str(BACKEND_ROOT / 'app'))
 
 
 # 判断 OSS 关键配置是否已准备完成。

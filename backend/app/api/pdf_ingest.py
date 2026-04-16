@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +13,7 @@ from app.models import PdfDocument
 from app.repositories.pdf_repository import get_ingest_job_by_id
 from app.schemas.common import ApiResponse
 from app.schemas.ingest import IngestJobCreateResult, IngestJobStatusResult, ManualHighlightInputItem
-from app.services.ingest_job_service import build_ingest_job_status, create_ingest_job, process_ingest_job
+from app.services.ingest_job_service import build_ingest_job_status, create_ingest_job
 from app.services.document_ingest_service import detect_source_file_kind
 from app.utils.oss_utils import build_derived_pdf_object_key, build_source_object_key, upload_stream_to_oss
 
@@ -49,7 +49,6 @@ async def ingest_pdf() -> ApiResponse[dict[str, str]]:
 # 创建浏览器上传任务，快速返回 jobId，后台再异步提取测试命中。
 @router.post('/upload', response_model=ApiResponse[IngestJobCreateResult])
 async def upload_pdf(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     items: str = Form(default='[]'),
     session: AsyncSession = Depends(get_session)
@@ -93,7 +92,6 @@ async def upload_pdf(
 
     try:
         await run_in_threadpool(upload_stream_to_oss, source_object_key, file.file, content_type)
-        await session.commit()
     except Exception:
         await session.rollback()
         raise
@@ -111,7 +109,12 @@ async def upload_pdf(
         source_file_kind=file_kind,
         derived_object_key=derived_object_key
     )
-    background_tasks.add_task(process_ingest_job, job_id)
+
+    try:
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
 
     return ApiResponse(
         data=IngestJobCreateResult(

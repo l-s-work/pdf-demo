@@ -10,8 +10,29 @@ from app.core.settings import OCR_DPI, OCR_LANGUAGE
 MANUAL_HIT_LOOKAHEAD_PAGES = 2
 MANUAL_HIT_LOOKBACK_PAGES = 2
 MANUAL_FRAGMENT_MIN_LENGTH = 12
+# 可疑扫描页判定阈值：少量文字且图片占比很高时，优先走 OCR。
+SCANNED_PAGE_MAX_WORDS = 20
+SCANNED_PAGE_MAX_TEXT_CHARS = 160
+SCANNED_PAGE_STRONG_SUSPICION_WORDS = 5
+SCANNED_PAGE_IMAGE_COVERAGE_THRESHOLD = 0.5
+SCANNED_PAGE_LOW_WORD_IMAGE_THRESHOLD = 0.2
 _OCR_ENGINE_LOCK = threading.Lock()
 _OCR_ENGINE = None
+
+
+# 从 OCR 识别框里提取边界坐标，兼容 list、tuple 和 numpy 数组。
+def _extract_box_bounds(box) -> tuple[float, float, float, float] | None:
+    try:
+        points = np.asarray(box, dtype=float)
+    except Exception:
+        return None
+
+    if points.ndim != 2 or points.shape[0] < 4 or points.shape[1] < 2:
+        return None
+
+    xs = points[:, 0]
+    ys = points[:, 1]
+    return float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())
 
 
 # 打开 PDF 文档对象。
@@ -49,6 +70,58 @@ def extract_first_page_meta(pdf_doc: fitz.Document) -> dict[str, float | int] | 
     }
 
 
+# 估算页面中图片块对整页的覆盖比例，用于识别“图片为主”的扫描页。
+def estimate_page_image_coverage(page: fitz.Page) -> float:
+    try:
+        page_dict = page.get_text('dict')
+    except Exception:
+        return 0.0
+
+    page_rect = page.rect
+    page_area = max(float(page_rect.width) * float(page_rect.height), 1.0)
+    covered_area = 0.0
+
+    for block in page_dict.get('blocks', []):
+        if not isinstance(block, dict) or int(block.get('type', -1)) != 1:
+            continue
+
+        bbox = block.get('bbox')
+        if not isinstance(bbox, (list, tuple)) or len(bbox) < 4:
+            continue
+
+        x0, y0, x1, y1 = [float(value) for value in bbox[:4]]
+        block_area = max(0.0, x1 - x0) * max(0.0, y1 - y0)
+        if block_area <= 0:
+            continue
+
+        covered_area += block_area
+        if covered_area >= page_area:
+            return 1.0
+
+    return min(covered_area / page_area, 1.0)
+
+
+# 判断页面是否疑似扫描件或隐藏文本页。
+def should_use_ocr_for_page(page: fitz.Page, normal_words: list[dict[str, float | int | str]]) -> bool:
+    word_count = len(normal_words)
+    if word_count == 0:
+        return True
+
+    text_char_count = sum(len(str(word.get('normalized_text') or '')) for word in normal_words)
+    if word_count <= SCANNED_PAGE_STRONG_SUSPICION_WORDS and text_char_count <= 40:
+        return True
+
+    if word_count <= SCANNED_PAGE_MAX_WORDS and text_char_count <= SCANNED_PAGE_MAX_TEXT_CHARS:
+        image_coverage = estimate_page_image_coverage(page)
+        if image_coverage >= SCANNED_PAGE_IMAGE_COVERAGE_THRESHOLD:
+            return True
+
+        if word_count <= 10 and text_char_count <= 80 and image_coverage >= SCANNED_PAGE_LOW_WORD_IMAGE_THRESHOLD:
+            return True
+
+    return False
+
+
 # 获取 PaddleOCR 引擎实例，首次调用时再初始化。
 def get_ocr_engine():
     global _OCR_ENGINE
@@ -64,9 +137,13 @@ def get_ocr_engine():
         except ImportError as exc:
             raise RuntimeError('未安装 PaddleOCR，请先安装后端依赖') from exc
 
+        # 扫描件命中只需要“原始页面图像上的检测/识别”，不要启用文档预处理，
+        # 否则 PaddleOCR 可能先旋转/矫正页面，导致返回框与 PyMuPDF 坐标不一致。
         _OCR_ENGINE = PaddleOCR(
             lang=OCR_LANGUAGE,
-            use_angle_cls=True
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False
         )
         return _OCR_ENGINE
 
@@ -75,7 +152,12 @@ def get_ocr_engine():
 def warmup_ocr_engine() -> None:
     ocr_engine = get_ocr_engine()
     warmup_image = np.zeros((32, 32, 3), dtype=np.uint8)
-    ocr_engine.ocr(warmup_image)
+    ocr_engine.ocr(
+        warmup_image,
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False
+    )
 
 
 # 将 PDF 页面渲染成适合 OCR 的图像数组。
@@ -93,16 +175,91 @@ def render_page_for_ocr(page: fitz.Page) -> np.ndarray:
 
 
 # 将 PaddleOCR 返回结果转换为统一的词元结构。
-def normalize_ocr_result(page_result) -> list[dict[str, float | int | str]]:
+def normalize_ocr_result(page_result, scale: float = 1.0) -> list[dict[str, float | int | str]]:
     if not page_result:
         return []
 
-    if isinstance(page_result, list) and len(page_result) == 1 and isinstance(page_result[0], list):
-        maybe_lines = page_result[0]
-        if not maybe_lines:
-            return []
-        if isinstance(maybe_lines[0], (list, tuple)) and len(maybe_lines[0]) == 2:
-            page_result = maybe_lines
+    if isinstance(page_result, list) and len(page_result) == 1 and isinstance(page_result[0], dict):
+        page_result = page_result[0]
+
+    # 兼容 PaddleOCR 旧版列表结构：[[box, text_result], ...]
+    if isinstance(page_result, list):
+        if len(page_result) == 1 and isinstance(page_result[0], list):
+            maybe_lines = page_result[0]
+            if not maybe_lines:
+                return []
+            if isinstance(maybe_lines[0], (list, tuple)) and len(maybe_lines[0]) == 2:
+                page_result = maybe_lines
+
+        word_items: list[dict[str, float | int | str]] = []
+        for line_index, line in enumerate(page_result):
+            if not isinstance(line, (list, tuple)) or len(line) != 2:
+                continue
+
+            box, text_result = line
+            if not isinstance(text_result, (list, tuple)) or not text_result:
+                continue
+
+            text = str(text_result[0] or '').strip()
+            normalized_text = normalize_search_text(text)
+            if not normalized_text:
+                continue
+
+            bounds = _extract_box_bounds(box)
+            if bounds is None:
+                continue
+            x0, y0, x1, y1 = bounds
+
+            word_items.append({
+                'text': text,
+                'normalized_text': normalized_text,
+                'x0': x0 / scale,
+                'y0': y0 / scale,
+                'x1': x1 / scale,
+                'y1': y1 / scale,
+                'block_no': 0,
+                'line_no': line_index,
+                'word_no': 0
+            })
+
+        return word_items
+
+    # 兼容 PaddleOCR 3.x 的字典结构。
+    if isinstance(page_result, dict):
+        rec_texts = list(page_result.get('rec_texts') or [])
+        rec_boxes = list(page_result.get('dt_polys') or page_result.get('rec_boxes') or [])
+        rec_scores = list(page_result.get('rec_scores') or [])
+        word_items: list[dict[str, float | int | str]] = []
+
+        for line_index, text in enumerate(rec_texts):
+            text = str(text or '').strip()
+            normalized_text = normalize_search_text(text)
+            if not normalized_text:
+                continue
+
+            box = rec_boxes[line_index] if line_index < len(rec_boxes) else None
+            if box is None:
+                continue
+
+            bounds = _extract_box_bounds(box)
+            if bounds is None:
+                continue
+            x0, y0, x1, y1 = bounds
+
+            # 这里直接把 OCR 像素坐标缩回 PDF point 坐标系，避免后续高亮偏移。
+            word_items.append({
+                'text': text,
+                'normalized_text': normalized_text,
+                'x0': x0 / scale,
+                'y0': y0 / scale,
+                'x1': x1 / scale,
+                'y1': y1 / scale,
+                'block_no': 0,
+                'line_no': line_index,
+                'word_no': 0
+            })
+
+        return word_items
 
     word_items: list[dict[str, float | int | str]] = []
     for line_index, line in enumerate(page_result):
@@ -118,22 +275,18 @@ def normalize_ocr_result(page_result) -> list[dict[str, float | int | str]]:
         if not normalized_text:
             continue
 
-        points = list(box) if isinstance(box, (list, tuple)) else []
-        if len(points) < 4:
+        bounds = _extract_box_bounds(box)
+        if bounds is None:
             continue
-
-        xs = [float(point[0]) for point in points if isinstance(point, (list, tuple)) and len(point) >= 2]
-        ys = [float(point[1]) for point in points if isinstance(point, (list, tuple)) and len(point) >= 2]
-        if not xs or not ys:
-            continue
+        x0, y0, x1, y1 = bounds
 
         word_items.append({
             'text': text,
             'normalized_text': normalized_text,
-            'x0': min(xs),
-            'y0': min(ys),
-            'x1': max(xs),
-            'y1': max(ys),
+            'x0': x0 / scale,
+            'y0': y0 / scale,
+            'x1': x1 / scale,
+            'y1': y1 / scale,
             'block_no': 0,
             'line_no': line_index,
             'word_no': 0
@@ -165,17 +318,23 @@ def extract_words_from_page(page: fitz.Page) -> list[dict[str, float | int | str
         return word_items
 
     normal_words = normalize_words(list(page.get_text('words', sort=True)))
-    if normal_words:
+    if normal_words and not should_use_ocr_for_page(page, normal_words):
         return normal_words
 
     try:
         ocr_engine = get_ocr_engine()
+        scale = max(1.0, OCR_DPI / 72.0)
         ocr_image = render_page_for_ocr(page)
-        ocr_result = ocr_engine.ocr(ocr_image)
+        ocr_result = ocr_engine.ocr(
+            ocr_image,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False
+        )
     except Exception as exc:
         raise RuntimeError('当前页面疑似扫描件，但 PaddleOCR 初始化或识别失败') from exc
 
-    return normalize_ocr_result(ocr_result)
+    return normalize_ocr_result(ocr_result, scale=scale)
 
 
 # 按关键词提取每个矩形命中，满足 per-hit 单位置设计。

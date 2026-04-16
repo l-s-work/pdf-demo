@@ -45,9 +45,32 @@ PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 
 ## 2. 启动服务
 
+API 进程：
+
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
+
+worker 进程：
+
+```bash
+python -m app.worker
+```
+
+本地开发时如果希望 worker 自动重启，直接在 `backend/.env` 里加：
+
+```env
+WORKER_RELOAD=true
+WORKER_RELOAD_PATHS=app
+```
+
+然后正常运行：
+
+```bash
+python -m app.worker
+```
+
+上传后会先写入 OSS，再由 worker 轮询 `pending` 任务并下载 OSS 源文件完成转换、OCR 和命中计算。
 
 ## 3. 关键接口
 

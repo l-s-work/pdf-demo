@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import SessionLocal
 from app.models import PdfIngestJob
-from app.repositories.pdf_repository import get_ingest_job_by_id, list_unfinished_ingest_jobs
+from app.repositories.pdf_repository import get_ingest_job_by_id, list_processing_ingest_jobs, list_unfinished_ingest_jobs
 from app.services.document_ingest_service import process_ingest_job as run_document_ingest_job
 
 
@@ -39,7 +39,6 @@ async def create_ingest_job(
         )
     )
     session.add(job)
-    await session.commit()
     return job
 
 
@@ -79,6 +78,20 @@ async def recover_unfinished_ingest_jobs() -> None:
             job.status = 'failed'
             job.error_message = '服务重启导致任务中断，请重新上传'
         await session.commit()
+
+
+# 将处理中但尚未完成的任务重新放回队列，供 worker 重启后继续消费。
+async def requeue_processing_ingest_jobs() -> int:
+    async with SessionLocal() as session:
+        jobs = await list_processing_ingest_jobs(session)
+        if not jobs:
+            return 0
+
+        for job in jobs:
+            job.status = 'pending'
+            job.error_message = None
+        await session.commit()
+        return len(jobs)
 
 
 # 读取任务状态，并还原为前端可直接展示的结构。

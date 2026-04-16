@@ -85,6 +85,27 @@ async def get_ingest_job_by_id(session: AsyncSession, job_id: str) -> PdfIngestJ
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+# 查询待处理的上传任务，供独立 worker 轮询认领。
+async def list_pending_ingest_jobs(session: AsyncSession, limit: int = 20) -> list[PdfIngestJob]:
+    stmt = (
+        select(PdfIngestJob)
+        .where(PdfIngestJob.status == 'pending')
+        .order_by(PdfIngestJob.created_at.asc(), PdfIngestJob.id.asc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+# 查询正在处理中的上传任务，用于 worker 启动时重置中断任务。
+async def list_processing_ingest_jobs(session: AsyncSession) -> list[PdfIngestJob]:
+    stmt = (
+        select(PdfIngestJob)
+        .where(PdfIngestJob.status == 'processing')
+        .order_by(PdfIngestJob.created_at.asc(), PdfIngestJob.id.asc())
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
 # 查询仍处于处理中状态的任务。
 async def list_unfinished_ingest_jobs(session: AsyncSession) -> list[PdfIngestJob]:
     stmt = select(PdfIngestJob).where(PdfIngestJob.status.in_(['pending', 'processing']))
