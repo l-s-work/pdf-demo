@@ -299,7 +299,7 @@ export default function PdfViewerPage() {
             activeHits={activeHits}
             targetPageNum={safeTargetPageNum}
             targetAnchorKey={targetAnchorKey}
-            preferStreaming={meta.fileKind !== 'docx'}
+            // preferStreaming={meta.fileKind !== 'docx'}
           />
         ) : null}
         </StyledViewerWrapper>

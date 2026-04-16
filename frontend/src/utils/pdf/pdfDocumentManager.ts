@@ -1,10 +1,17 @@
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
+import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
+import type {
+  PDFDocumentLoadingTask,
+  PDFDocumentProxy,
+  PDFPageProxy,
+} from "pdfjs-dist/types/src/display/api";
 
 const MAX_CACHED_PDF_COUNT = 5;
 const MAX_CACHED_PAGE_PROMISE_COUNT = 20;
-const PDF_WORKER_SRC = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
-const PDF_RESOURCE_BASE_URL = '/pdfjs/';
+const PDF_WORKER_SRC = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
+const PDF_RESOURCE_BASE_URL = "/pdfjs/";
 const PDF_CMAP_URL = `${PDF_RESOURCE_BASE_URL}cmaps/`;
 const PDF_STANDARD_FONT_DATA_URL = `${PDF_RESOURCE_BASE_URL}standard_fonts/`;
 
@@ -37,7 +44,7 @@ class PdfDocumentManager {
   async acquireDocument(
     pdfId: string,
     pdfUrl: string,
-    options: AcquireDocumentOptions = {}
+    options: AcquireDocumentOptions = {},
   ): Promise<PDFDocumentProxy> {
     let entry = this.cache.get(pdfId);
 
@@ -67,10 +74,10 @@ class PdfDocumentManager {
         disableStream: !preferStreaming,
         disableRange: !preferStreaming,
         disableAutoFetch: true,
-        rangeChunkSize: preferStreaming ? 128 * 1024 : 256 * 1024,
+        rangeChunkSize: preferStreaming ? 256 * 1024 : 256 * 1024,
         cMapUrl: PDF_CMAP_URL,
         cMapPacked: true,
-        standardFontDataUrl: PDF_STANDARD_FONT_DATA_URL
+        standardFontDataUrl: PDF_STANDARD_FONT_DATA_URL,
       });
 
       entry.loadingTask = loadingTask;
@@ -114,7 +121,10 @@ class PdfDocumentManager {
   }
 
   // 预热指定页，帮助目标页及附近页更快获取到 page 对象。
-  async warmupPage(pdfId: string, pageNum: number): Promise<PDFPageProxy | null> {
+  async warmupPage(
+    pdfId: string,
+    pageNum: number,
+  ): Promise<PDFPageProxy | null> {
     const entry = this.cache.get(pdfId);
     if (!entry?.pdfDoc || pageNum < 1 || pageNum > entry.pdfDoc.numPages) {
       return null;
@@ -159,7 +169,7 @@ class PdfDocumentManager {
       loadingPromise: null,
       pagePromiseCache: new Map<number, Promise<PDFPageProxy>>(),
       refCount: 0,
-      lastAccessAt: Date.now()
+      lastAccessAt: Date.now(),
     };
   }
 
@@ -169,7 +179,11 @@ class PdfDocumentManager {
   }
 
   // 更新页预热缓存访问顺序，并限制单文档页缓存数量。
-  private touchPagePromise(entry: PdfCacheEntry, pageNum: number, pagePromise: Promise<PDFPageProxy>): void {
+  private touchPagePromise(
+    entry: PdfCacheEntry,
+    pageNum: number,
+    pagePromise: Promise<PDFPageProxy>,
+  ): void {
     if (entry.pagePromiseCache.has(pageNum)) {
       entry.pagePromiseCache.delete(pageNum);
     }
@@ -195,14 +209,20 @@ class PdfDocumentManager {
       .filter(([, entry]) => entry.refCount === 0)
       .sort((left, right) => left[1].lastAccessAt - right[1].lastAccessAt);
 
-    while (this.cache.size > MAX_CACHED_PDF_COUNT && removableEntries.length > 0) {
+    while (
+      this.cache.size > MAX_CACHED_PDF_COUNT &&
+      removableEntries.length > 0
+    ) {
       const [pdfId, entry] = removableEntries.shift()!;
       void this.destroyEntry(pdfId, entry);
     }
   }
 
   // 销毁指定缓存条目，彻底释放其加载任务和文档对象。
-  private async destroyEntry(pdfId: string, entry: PdfCacheEntry): Promise<void> {
+  private async destroyEntry(
+    pdfId: string,
+    entry: PdfCacheEntry,
+  ): Promise<void> {
     this.cache.delete(pdfId);
     entry.pagePromiseCache.clear();
     entry.loadingPromise = null;
