@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "antd";
 import { usePdfDocument } from "../../../hooks/usePdfDocument";
 import { usePdfVirtualizer } from "../../../hooks/usePdfVirtualizer";
-import { useViewerStore } from "../../../store/viewerStore";
 import { getRequestErrorMessage } from "../../../api/http";
 import {
   StyledContainer,
@@ -18,15 +17,21 @@ export default function PdfVirtualViewer({
   pdfId,
   pdfUrl,
   meta,
-  viewerWidth = 800,
+  viewerWidth,
   activeHits,
   targetPageNum,
   targetAnchorKey,
   preferStreaming = true,
+  onCurrentPageChange,
 }: PdfVirtualViewerProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const { pdfDoc, error, warmupPage } = usePdfDocument(pdfId, pdfUrl, preferStreaming);
-  const { scale, setScale, setCurrentPage } = useViewerStore();
+  const { pdfDoc, error, warmupPage } = usePdfDocument(
+    pdfId,
+    pdfUrl,
+    preferStreaming,
+  );
+  const [scale, setScale] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const [measuredPageHeights, setMeasuredPageHeights] = useState<
     Record<number, number>
   >({});
@@ -48,6 +53,14 @@ export default function PdfVirtualViewer({
   useEffect(() => {
     setMeasuredPageHeights({});
   }, [pdfId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pdfId]);
+
+  useEffect(() => {
+    onCurrentPageChange?.(currentPage);
+  }, [currentPage, onCurrentPageChange]);
 
   useEffect(() => {
     setHighlightAlignVersion(0);
@@ -82,6 +95,7 @@ export default function PdfVirtualViewer({
     return () => resizeObserver.disconnect();
   }, [firstPageWidth, scale, setScale, viewerWidth]);
 
+  // 回填单页真实高度，帮助虚拟列表逐步修正估算尺寸。
   const handlePageMeasured = useCallback(
     (pageNum: number, _width: number, height: number) => {
       setMeasuredPageHeights((currentHeights) => {
@@ -159,8 +173,11 @@ export default function PdfVirtualViewer({
       [...virtualItems]
         .reverse()
         .find((item) => item.start <= scrollOffset + 1) ?? virtualItems[0];
-    setCurrentPage(currentItem.index + 1);
-  }, [rowVirtualizer.scrollOffset, setCurrentPage, virtualItems]);
+    const nextCurrentPage = currentItem.index + 1;
+    setCurrentPage((previousPage) =>
+      previousPage === nextCurrentPage ? previousPage : nextCurrentPage,
+    );
+  }, [rowVirtualizer.scrollOffset, virtualItems]);
 
   useEffect(() => {
     if (!pdfDoc) {
@@ -187,6 +204,7 @@ export default function PdfVirtualViewer({
     };
   }, [pagesToWarmup, pdfDoc, warmupPage]);
 
+  // 将当前命中的主高亮移动到视口偏上的可读区域。
   const alignHighlightAnchor = useCallback(
     (anchor: { pageNum: number; rect: ViewportRect }): boolean => {
       const scrollElement = parentRef.current;
@@ -245,6 +263,7 @@ export default function PdfVirtualViewer({
     virtualItems,
   ]);
 
+  // 首个高亮矩形可用后执行精确对齐，避免只滚到页首造成命中偏离视口。
   const handlePrimaryHighlightReady = useCallback(
     (pageNum: number, rect: ViewportRect) => {
       if (hasAutoAlignedHighlightRef.current) {
@@ -306,14 +325,8 @@ export default function PdfVirtualViewer({
               meta.pageSizeList[0];
             const pageRawWidth = pageMeta?.width ?? firstPageWidth ?? 800;
             const pageRawHeight = pageMeta?.height ?? pageMeta?.width ?? 842;
-            const pageWidth = Math.max(
-              1,
-              Math.round(pageRawWidth * scale),
-            );
-            const pageHeight = Math.max(
-              1,
-              Math.round(pageRawHeight * scale),
-            );
+            const pageWidth = Math.max(1, Math.round(pageRawWidth * scale));
+            const pageHeight = Math.max(1, Math.round(pageRawHeight * scale));
             return (
               <StyledPageSlot
                 key={virtualItem.key}
