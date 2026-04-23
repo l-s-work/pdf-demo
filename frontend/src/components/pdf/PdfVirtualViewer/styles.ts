@@ -176,9 +176,4 @@ export const StyledTextLayer = styled.div`
   br::-moz-selection {
     background: transparent;
   }
-
-  /* pdf.js 会往文本层里插入测量用的隐藏 canvas，不补这层样式就会露出黑块。 */
-  .hiddenCanvasElement {
-    display: none !important;
-  }
 `;
