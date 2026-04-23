@@ -67,7 +67,7 @@ export function normalizeRequestError(error: unknown): AppRequestError {
       code: 'REQUEST_CANCELED',
       message: '请求已取消',
       isCanceled: true,
-      raw: error
+      raw: error,
     });
   }
 
@@ -78,9 +78,11 @@ export function normalizeRequestError(error: unknown): AppRequestError {
 
     return new AppRequestError({
       code: error.code ?? (status ? `HTTP_${status}` : 'AXIOS_ERROR'),
-      message: backendMessage ?? (isTimeout ? '请求超时' : status ? `请求失败（${status}）` : '网络请求失败'),
+      message:
+        backendMessage ??
+        (isTimeout ? '请求超时' : status ? `请求失败（${status}）` : '网络请求失败'),
       status,
-      raw: error
+      raw: error,
     });
   }
 
@@ -89,7 +91,7 @@ export function normalizeRequestError(error: unknown): AppRequestError {
       code: 'REQUEST_CANCELED',
       message: '请求已取消',
       isCanceled: true,
-      raw: error
+      raw: error,
     });
   }
 
@@ -97,14 +99,14 @@ export function normalizeRequestError(error: unknown): AppRequestError {
     return new AppRequestError({
       code: 'UNKNOWN_ERROR',
       message: error.message || '未知请求错误',
-      raw: error
+      raw: error,
     });
   }
 
   return new AppRequestError({
     code: 'UNKNOWN_ERROR',
     message: '未知请求错误',
-    raw: error
+    raw: error,
   });
 }
 

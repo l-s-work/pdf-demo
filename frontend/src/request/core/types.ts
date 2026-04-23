@@ -10,7 +10,8 @@ export interface RequestLifecycleOptions<TSignal = AbortSignal> {
 }
 
 // 普通 HTTP 请求参数类型。
-export interface RequestOptions<TData = unknown> extends Omit<AxiosRequestConfig<TData>, 'signal'>, RequestLifecycleOptions<GenericAbortSignal> {}
+export interface RequestOptions<TData = unknown>
+  extends Omit<AxiosRequestConfig<TData>, 'signal'>, RequestLifecycleOptions<GenericAbortSignal> {}
 
 // 单次流式分片回调参数。
 export interface StreamChunkPayload {

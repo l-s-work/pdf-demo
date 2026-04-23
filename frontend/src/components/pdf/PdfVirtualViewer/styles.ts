@@ -1,10 +1,9 @@
-import styled from "styled-components";
+import styled from 'styled-components';
 
 // Viewer 最外层容器。
 export const StyledContainer = styled.div<{ $viewerWidth?: number }>`
   position: relative;
-  width: ${({ $viewerWidth }) =>
-    $viewerWidth && $viewerWidth > 0 ? `${$viewerWidth}px` : "100%"};
+  width: ${({ $viewerWidth }) => ($viewerWidth && $viewerWidth > 0 ? `${$viewerWidth}px` : '100%')};
   max-width: 100%;
   margin: 0 auto;
   height: 100%;
@@ -59,11 +58,7 @@ export const StyledPagePlaceholder = styled.div<{
   border-radius: 4px;
   border: 1px solid rgba(217, 217, 217, 0.9);
   background:
-    linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.9),
-      rgba(248, 250, 252, 0.96)
-    ),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.96)),
     repeating-linear-gradient(
       135deg,
       rgba(24, 144, 255, 0.05) 0,
@@ -156,7 +151,7 @@ export const StyledTextLayer = styled.div`
     height: 0;
   }
 
-  span[role="img"] {
+  span[role='img'] {
     user-select: none;
     cursor: default;
   }

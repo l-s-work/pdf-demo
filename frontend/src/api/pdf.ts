@@ -5,37 +5,43 @@ import type {
   PdfMetaData,
   PdfPreviewUrlResult,
   PdfSourceUrlResult,
-  PdfUploadJobCreateResult
+  PdfUploadJobCreateResult,
 } from '../types/pdf';
 
 // 按文档 ID 获取轻量索引，用于计算每页尺寸和虚拟滚动。
 export async function fetchPdfMeta(pdfId: string, options?: RequestOptions): Promise<PdfMetaData> {
-  const response = await requestClient.get<ApiResponse<PdfMetaData>>(`/api/pdf/${pdfId}/meta`, options);
+  const response = await requestClient.get<ApiResponse<PdfMetaData>>(
+    `/api/pdf/${pdfId}/meta`,
+    options
+  );
   return response.data;
 }
-
 
 // 获取 PDF 预览地址，优先返回 OSS 签名直链。
 export async function fetchPdfPreviewUrl(
   pdfId: string,
   options?: RequestOptions
 ): Promise<PdfPreviewUrlResult> {
-  const response = await requestClient.get<ApiResponse<PdfPreviewUrlResult>>(`/api/pdf/${pdfId}/preview-url`, {
-    ...options
-  });
+  const response = await requestClient.get<ApiResponse<PdfPreviewUrlResult>>(
+    `/api/pdf/${pdfId}/preview-url`,
+    {
+      ...options,
+    }
+  );
   return response.data;
 }
-
 
 // 获取 PDF 源文件下载地址，优先返回 OSS 签名直链。
 export async function fetchPdfSourceUrl(
   pdfId: string,
   options?: RequestOptions
 ): Promise<PdfSourceUrlResult> {
-  const response = await requestClient.get<ApiResponse<PdfSourceUrlResult>>(`/api/pdf/${pdfId}/source-url`, options);
+  const response = await requestClient.get<ApiResponse<PdfSourceUrlResult>>(
+    `/api/pdf/${pdfId}/source-url`,
+    options
+  );
   return response.data;
 }
-
 
 // 创建 PDF 上传任务，并立即返回任务 ID。
 export async function createPdfUploadJob(
@@ -49,6 +55,10 @@ export async function createPdfUploadJob(
     formData.append('items', JSON.stringify(items));
   }
 
-  const response = await requestClient.post<ApiResponse<PdfUploadJobCreateResult>, FormData>('/api/pdf/upload', formData, options);
+  const response = await requestClient.post<ApiResponse<PdfUploadJobCreateResult>, FormData>(
+    '/api/pdf/upload',
+    formData,
+    options
+  );
   return response.data;
 }

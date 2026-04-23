@@ -14,7 +14,7 @@ interface UsePdfDocumentResult {
 export function usePdfDocument(
   pdfId: string,
   pdfUrl: string,
-  preferStreaming = true,
+  preferStreaming = true
 ): UsePdfDocumentResult {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [isLoading, setIsLoading] = useState(false);

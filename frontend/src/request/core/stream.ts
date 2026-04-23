@@ -4,7 +4,9 @@ import { AppRequestError, normalizeRequestError } from './error';
 import type { StreamRequestOptions } from './types';
 
 // 浏览器端流式请求能力，适合 SSE/分块文本/增量输出等场景。
-export async function streamRequest<TResponse = string>(options: StreamRequestOptions): Promise<TResponse> {
+export async function streamRequest<TResponse = string>(
+  options: StreamRequestOptions
+): Promise<TResponse> {
   const controller = createManagedRequestController(options);
 
   try {
@@ -12,14 +14,14 @@ export async function streamRequest<TResponse = string>(options: StreamRequestOp
       method: options.method ?? 'GET',
       headers: options.headers,
       body: options.body,
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     if (!response.ok) {
       throw new AppRequestError({
         code: `HTTP_${response.status}`,
         message: (await response.text()) || `请求失败（${response.status}）`,
-        status: response.status
+        status: response.status,
       });
     }
 

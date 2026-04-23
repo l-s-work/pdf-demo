@@ -11,10 +11,10 @@ export interface ViewportRect {
 const StyledOverlay = styled.div<ViewportRect>`
   position: absolute;
   z-index: 2;
-  left: ${(props) => `${props.left}px`};
-  top: ${(props) => `${props.top}px`};
-  width: ${(props) => `${props.width}px`};
-  height: ${(props) => `${props.height}px`};
+  left: ${props => `${props.left}px`};
+  top: ${props => `${props.top}px`};
+  width: ${props => `${props.width}px`};
+  height: ${props => `${props.height}px`};
   border-radius: 1px;
   background: rgba(255, 230, 0, 0.55);
   box-shadow: none;

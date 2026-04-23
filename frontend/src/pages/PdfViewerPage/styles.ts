@@ -1,4 +1,4 @@
-import styled from "styled-components";
+import styled from 'styled-components';
 
 // 预览页最外层容器样式。
 export const StyledContainer = styled.div`
@@ -72,20 +72,19 @@ export const StyledSidebarItem = styled.button<{
 }>`
   width: 100%;
   text-align: left;
-  border: 1px solid ${({ $active }) => ($active ? "#1677ff" : "#e6e8ef")};
-  background: ${({ $active }) => ($active ? "#eff6ff" : "#fff")};
+  border: 1px solid ${({ $active }) => ($active ? '#1677ff' : '#e6e8ef')};
+  background: ${({ $active }) => ($active ? '#eff6ff' : '#fff')};
   border-radius: 10px;
   padding: 12px 12px 10px;
   margin-bottom: 8px;
-  cursor: ${({ $disabled }) => ($disabled ? "not-allowed" : "pointer")};
+  cursor: ${({ $disabled }) => ($disabled ? 'not-allowed' : 'pointer')};
   transition: all 0.16s ease;
   opacity: ${({ $disabled }) => ($disabled ? 0.56 : 1)};
 
   &:hover {
     border-color: ${({ $disabled, $active }) =>
-      $disabled ? ($active ? "#1677ff" : "#e6e8ef") : "#1677ff"};
-    box-shadow: ${({ $disabled }) =>
-      $disabled ? "none" : "0 4px 16px rgba(22, 119, 255, 0.12)"};
+      $disabled ? ($active ? '#1677ff' : '#e6e8ef') : '#1677ff'};
+    box-shadow: ${({ $disabled }) => ($disabled ? 'none' : '0 4px 16px rgba(22, 119, 255, 0.12)')};
   }
 `;
 
@@ -118,7 +117,7 @@ export const StyledViewerGrid = styled.div<{ $dual: boolean }>`
   min-height: 0;
   display: grid;
   grid-template-columns: ${({ $dual }) =>
-    $dual ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)"};
+    $dual ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)'};
   gap: 12px;
 
   @media (max-width: 1400px) {

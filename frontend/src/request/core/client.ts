@@ -7,12 +7,12 @@ import type { RequestOptions } from './types';
 // 创建统一 axios 客户端，供普通 JSON API 请求复用。
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000
+  timeout: 30000,
 });
 
 axiosClient.interceptors.response.use(
-  (response) => response,
-  (error) => Promise.reject(normalizeRequestError(error))
+  response => response,
+  error => Promise.reject(normalizeRequestError(error))
 );
 
 // 封装 GET / POST 等常见请求能力，并统一接入取消与错误处理。
@@ -23,7 +23,7 @@ class RequestClient {
     try {
       const response = await axiosClient.request<TResponse>({
         ...options,
-        signal: controller.signal
+        signal: controller.signal,
       });
       return response.data;
     } catch (error) {
@@ -37,16 +37,20 @@ class RequestClient {
     return this.request<TResponse>({
       ...options,
       url,
-      method: 'GET'
+      method: 'GET',
     });
   }
 
-  async post<TResponse, TData = unknown>(url: string, data?: TData, options?: RequestOptions<TData>): Promise<TResponse> {
+  async post<TResponse, TData = unknown>(
+    url: string,
+    data?: TData,
+    options?: RequestOptions<TData>
+  ): Promise<TResponse> {
     return this.request<TResponse, TData>({
       ...options,
       url,
       data,
-      method: 'POST'
+      method: 'POST',
     });
   }
 }

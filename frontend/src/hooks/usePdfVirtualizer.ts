@@ -22,19 +22,19 @@ export function usePdfVirtualizer({
 }: UsePdfVirtualizerOptions) {
   const initialScrollKeyRef = useRef<string | null>(null);
   const lastMeasureKeyRef = useRef<string | null>(null);
-  const firstPageMeta = meta.pageSizeList.find((item) => item.pageNum === 1) ?? meta.pageSizeList[0];
+  const firstPageMeta = meta.pageSizeList.find(item => item.pageNum === 1) ?? meta.pageSizeList[0];
   const estimatedFirstPageHeight = firstPageMeta?.height ?? 842;
 
   const rowVirtualizer = useVirtualizer({
     count: meta.totalPages,
     getScrollElement: () => parentRef.current,
-    estimateSize: (index) => {
+    estimateSize: index => {
       const pageNum = index + 1;
       const measuredHeight = measuredPageHeights?.[pageNum];
       const baseHeight = measuredHeight ?? estimatedFirstPageHeight;
       return baseHeight * scale + 18;
     },
-    overscan: 3
+    overscan: 3,
   });
 
   useLayoutEffect(() => {
@@ -43,7 +43,7 @@ export function usePdfVirtualizer({
       scale.toFixed(4),
       ...Object.entries(measuredPageHeights ?? {})
         .sort(([leftKey], [rightKey]) => Number(leftKey) - Number(rightKey))
-        .map(([pageNum, height]) => `${pageNum}:${height.toFixed(2)}`)
+        .map(([pageNum, height]) => `${pageNum}:${height.toFixed(2)}`),
     ].join('|');
 
     if (lastMeasureKeyRef.current === measureKey) {

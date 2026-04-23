@@ -1,30 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Alert,
-  Button,
-  Card,
-  Empty,
-  Input,
-  Space,
-  Spin,
-  Typography,
-} from "antd";
-import { getRequestErrorMessage } from "../../api/http";
-import { fetchHighlightGroupHits, fetchPdfTestHits } from "../../api/hits";
-import {
-  fetchPdfMeta,
-  fetchPdfPreviewUrl,
-  fetchPdfSourceUrl,
-} from "../../api/pdf";
-import PdfVirtualViewer from "../../components/pdf/PdfVirtualViewer";
-import type { HighlightHitItem } from "../../types/pdf";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Button, Card, Empty, Input, Space, Spin, Typography } from 'antd';
+import { getRequestErrorMessage } from '../../api/http';
+import { fetchHighlightGroupHits, fetchPdfTestHits } from '../../api/hits';
+import { fetchPdfMeta, fetchPdfPreviewUrl, fetchPdfSourceUrl } from '../../api/pdf';
+import PdfVirtualViewer from '../../components/pdf/PdfVirtualViewer';
+import type { HighlightHitItem } from '../../types/pdf';
 import {
   StyledBody,
   StyledContainer,
@@ -43,12 +25,8 @@ import {
   StyledViewerPaneHeader,
   StyledViewerPaneMeta,
   StyledViewerWrapper,
-} from "./styles";
-import type {
-  ComparableHitItem,
-  ComparePointItem,
-  PdfViewerLocationState,
-} from "./types";
+} from './styles';
+import type { ComparableHitItem, ComparePointItem, PdfViewerLocationState } from './types';
 
 // 测试项锚点排序规则，保证列表与对比匹配的稳定性。
 function sortAnchorHits(left: HighlightHitItem, right: HighlightHitItem) {
@@ -74,23 +52,19 @@ function normalizeKeyword(keyword: string): string {
 
 // 规范化对比文档 ID，避免 URL 与输入框里出现空白值。
 function normalizePdfId(rawValue?: string | null): string {
-  return rawValue?.trim() ?? "";
+  return rawValue?.trim() ?? '';
 }
 
 // 判断命中是否具备可渲染的高亮矩形。
-function isRenderableHit(
-  hit?: HighlightHitItem | null,
-): hit is HighlightHitItem {
+function isRenderableHit(hit?: HighlightHitItem | null): hit is HighlightHitItem {
   return Boolean(hit && hit.pageNum > 0 && hit.w > 0 && hit.h > 0);
 }
 
 // 将单文档锚点扩展为带 occurrenceIndex 的可对比结构。
-function buildComparableHitItems(
-  hits: HighlightHitItem[],
-): ComparableHitItem[] {
+function buildComparableHitItems(hits: HighlightHitItem[]): ComparableHitItem[] {
   const occurrenceMap = new Map<string, number>();
 
-  return [...hits].sort(sortAnchorHits).map((hit) => {
+  return [...hits].sort(sortAnchorHits).map(hit => {
     const normalizedKeyword = normalizeKeyword(hit.keyword);
     const occurrenceIndex = occurrenceMap.get(normalizedKeyword) ?? 0;
     occurrenceMap.set(normalizedKeyword, occurrenceIndex + 1);
@@ -106,10 +80,10 @@ function buildComparableHitItems(
 // 根据锚点与 group 明细组装当前 viewer 需要渲染的高亮集合。
 function buildActiveHits(
   anchorHit: HighlightHitItem | null,
-  groupHits?: HighlightHitItem[],
+  groupHits?: HighlightHitItem[]
 ): HighlightHitItem[] {
   if (Array.isArray(groupHits) && groupHits.length > 0) {
-    return groupHits.filter((item) => isRenderableHit(item));
+    return groupHits.filter(item => isRenderableHit(item));
   }
 
   if (isRenderableHit(anchorHit)) {
@@ -122,7 +96,7 @@ function buildActiveHits(
 // 优先取锚点页，没有锚点时退回高亮集合里的第一页。
 function resolveTargetPageNum(
   anchorHit: HighlightHitItem | null,
-  activeHits: HighlightHitItem[],
+  activeHits: HighlightHitItem[]
 ): number {
   if (anchorHit?.pageNum && anchorHit.pageNum > 0) {
     return anchorHit.pageNum;
@@ -143,34 +117,29 @@ function clampPageNum(pageNum: number, totalPages?: number): number {
 
 // PDF 预览页：负责读取 meta 并渲染虚拟页面 Viewer。
 export default function PdfViewerPage() {
-  const { pdfId = "" } = useParams();
+  const { pdfId = '' } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const state = (location.state ?? {}) as PdfViewerLocationState;
   const hit = state.hit;
-  const stateComparePdfId = useMemo(
-    () => normalizePdfId(state.comparePdfId),
-    [state.comparePdfId],
-  );
+  const stateComparePdfId = useMemo(() => normalizePdfId(state.comparePdfId), [state.comparePdfId]);
   const comparePdfId = useMemo(() => {
-    const comparePdfIdFromQuery = normalizePdfId(
-      searchParams.get("comparePdfId"),
-    );
+    const comparePdfIdFromQuery = normalizePdfId(searchParams.get('comparePdfId'));
     if (comparePdfIdFromQuery) {
       return comparePdfIdFromQuery;
     }
     return stateComparePdfId;
   }, [searchParams, stateComparePdfId]);
   const normalizedComparePdfId = useMemo(
-    () => (comparePdfId && comparePdfId !== pdfId ? comparePdfId : ""),
-    [comparePdfId, pdfId],
+    () => (comparePdfId && comparePdfId !== pdfId ? comparePdfId : ''),
+    [comparePdfId, pdfId]
   );
   const [comparePdfIdInput, setComparePdfIdInput] = useState(comparePdfId);
-  const [compareInputErrorText, setCompareInputErrorText] = useState("");
-  const [selectedCompareKey, setSelectedCompareKey] = useState("");
+  const [compareInputErrorText, setCompareInputErrorText] = useState('');
+  const [selectedCompareKey, setSelectedCompareKey] = useState('');
   const [isOpeningSource, setIsOpeningSource] = useState(false);
-  const [sourceUrlErrorText, setSourceUrlErrorText] = useState("");
+  const [sourceUrlErrorText, setSourceUrlErrorText] = useState('');
   const [primaryCurrentPage, setPrimaryCurrentPage] = useState(1);
   const [compareCurrentPage, setCompareCurrentPage] = useState(1);
   const appliedLocationHitIdRef = useRef<string | null>(null);
@@ -180,9 +149,9 @@ export default function PdfViewerPage() {
     const previousHtmlOverflow = document.documentElement.style.overflow;
     const previousBodyMargin = document.body.style.margin;
 
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.margin = "0";
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.margin = '0';
 
     return () => {
       document.body.style.overflow = previousBodyOverflow;
@@ -192,7 +161,7 @@ export default function PdfViewerPage() {
   }, []);
 
   useEffect(() => {
-    setSourceUrlErrorText("");
+    setSourceUrlErrorText('');
   }, [pdfId]);
 
   useEffect(() => {
@@ -200,12 +169,12 @@ export default function PdfViewerPage() {
   }, [comparePdfId]);
 
   useEffect(() => {
-    if (searchParams.has("comparePdfId") || !stateComparePdfId) {
+    if (searchParams.has('comparePdfId') || !stateComparePdfId) {
       return;
     }
 
     const nextSearchParams = new URLSearchParams(searchParams);
-    nextSearchParams.set("comparePdfId", stateComparePdfId);
+    nextSearchParams.set('comparePdfId', stateComparePdfId);
     setSearchParams(nextSearchParams, { replace: true });
   }, [searchParams, setSearchParams, stateComparePdfId]);
 
@@ -223,7 +192,7 @@ export default function PdfViewerPage() {
     isLoading: isPrimaryMetaLoading,
     error: primaryMetaError,
   } = useQuery({
-    queryKey: ["pdf-meta", pdfId],
+    queryKey: ['pdf-meta', pdfId],
     queryFn: ({ signal }) => fetchPdfMeta(pdfId, { signal }),
     enabled: Boolean(pdfId),
     staleTime: 1000 * 60 * 10,
@@ -234,7 +203,7 @@ export default function PdfViewerPage() {
     error: primaryPreviewUrlError,
     isLoading: isPrimaryPreviewUrlLoading,
   } = useQuery({
-    queryKey: ["pdf-preview-url", pdfId],
+    queryKey: ['pdf-preview-url', pdfId],
     queryFn: ({ signal }) => fetchPdfPreviewUrl(pdfId, { signal }),
     enabled: Boolean(pdfId),
     staleTime: 1000 * 60 * 30,
@@ -246,7 +215,7 @@ export default function PdfViewerPage() {
     isLoading: isCompareMetaLoading,
     error: compareMetaError,
   } = useQuery({
-    queryKey: ["pdf-meta", normalizedComparePdfId],
+    queryKey: ['pdf-meta', normalizedComparePdfId],
     queryFn: ({ signal }) => fetchPdfMeta(normalizedComparePdfId, { signal }),
     enabled: Boolean(normalizedComparePdfId),
     staleTime: 1000 * 60 * 10,
@@ -257,61 +226,52 @@ export default function PdfViewerPage() {
     error: comparePreviewUrlError,
     isLoading: isComparePreviewUrlLoading,
   } = useQuery({
-    queryKey: ["pdf-preview-url", normalizedComparePdfId],
-    queryFn: ({ signal }) =>
-      fetchPdfPreviewUrl(normalizedComparePdfId, { signal }),
+    queryKey: ['pdf-preview-url', normalizedComparePdfId],
+    queryFn: ({ signal }) => fetchPdfPreviewUrl(normalizedComparePdfId, { signal }),
     enabled: Boolean(normalizedComparePdfId),
     staleTime: 1000 * 60 * 30,
     refetchOnWindowFocus: false,
   });
 
   const { data: primaryTestHits, error: primaryTestHitsError } = useQuery({
-    queryKey: ["pdf-test-hits", pdfId],
+    queryKey: ['pdf-test-hits', pdfId],
     queryFn: ({ signal }) => fetchPdfTestHits(pdfId, { signal }),
     enabled: Boolean(pdfId),
     staleTime: 1000 * 60,
   });
 
   const { data: compareTestHits, error: compareTestHitsError } = useQuery({
-    queryKey: ["pdf-test-hits", normalizedComparePdfId],
-    queryFn: ({ signal }) =>
-      fetchPdfTestHits(normalizedComparePdfId, { signal }),
+    queryKey: ['pdf-test-hits', normalizedComparePdfId],
+    queryFn: ({ signal }) => fetchPdfTestHits(normalizedComparePdfId, { signal }),
     enabled: Boolean(normalizedComparePdfId),
     staleTime: 1000 * 60,
   });
 
   const sortedPrimaryTestHits = useMemo(
     () => [...(primaryTestHits ?? [])].sort(sortAnchorHits),
-    [primaryTestHits],
+    [primaryTestHits]
   );
   const sortedCompareTestHits = useMemo(
     () => [...(compareTestHits ?? [])].sort(sortAnchorHits),
-    [compareTestHits],
+    [compareTestHits]
   );
   const primaryAnchorHits = useMemo(
-    () =>
-      sortedPrimaryTestHits.length > 0
-        ? sortedPrimaryTestHits
-        : hit
-          ? [hit]
-          : [],
-    [hit, sortedPrimaryTestHits],
+    () => (sortedPrimaryTestHits.length > 0 ? sortedPrimaryTestHits : hit ? [hit] : []),
+    [hit, sortedPrimaryTestHits]
   );
   const primaryComparableHits = useMemo(
     () => buildComparableHitItems(primaryAnchorHits),
-    [primaryAnchorHits],
+    [primaryAnchorHits]
   );
   const compareComparableHits = useMemo(
     () => buildComparableHitItems(sortedCompareTestHits),
-    [sortedCompareTestHits],
+    [sortedCompareTestHits]
   );
   const compareHitByKey = useMemo(() => {
-    return new Map(
-      compareComparableHits.map((item) => [item.compareKey, item.hit]),
-    );
+    return new Map(compareComparableHits.map(item => [item.compareKey, item.hit]));
   }, [compareComparableHits]);
   const comparePointItems = useMemo<ComparePointItem[]>(() => {
-    return primaryComparableHits.map((item) => ({
+    return primaryComparableHits.map(item => ({
       compareKey: item.compareKey,
       keyword: item.hit.keyword,
       occurrenceIndex: item.occurrenceIndex,
@@ -320,25 +280,19 @@ export default function PdfViewerPage() {
     }));
   }, [compareHitByKey, primaryComparableHits]);
   const matchedComparePointItems = useMemo(
-    () => comparePointItems.filter((item) => Boolean(item.compareHit)),
-    [comparePointItems],
+    () => comparePointItems.filter(item => Boolean(item.compareHit)),
+    [comparePointItems]
   );
   const fallbackComparePointItems = useMemo(
-    () =>
-      matchedComparePointItems.length > 0
-        ? matchedComparePointItems
-        : comparePointItems,
-    [comparePointItems, matchedComparePointItems],
+    () => (matchedComparePointItems.length > 0 ? matchedComparePointItems : comparePointItems),
+    [comparePointItems, matchedComparePointItems]
   );
   const locationCompareKey = useMemo(() => {
     if (!hit?.hitId) {
-      return "";
+      return '';
     }
 
-    return (
-      primaryComparableHits.find((item) => item.hit.hitId === hit.hitId)
-        ?.compareKey ?? ""
-    );
+    return primaryComparableHits.find(item => item.hit.hitId === hit.hitId)?.compareKey ?? '';
   }, [hit?.hitId, primaryComparableHits]);
 
   useEffect(() => {
@@ -351,7 +305,7 @@ export default function PdfViewerPage() {
     }
 
     const targetComparePoint = comparePointItems.find(
-      (item) => item.compareKey === locationCompareKey,
+      item => item.compareKey === locationCompareKey
     );
     if (!targetComparePoint) {
       return;
@@ -363,42 +317,29 @@ export default function PdfViewerPage() {
 
     appliedLocationHitIdRef.current = hit.hitId;
     setSelectedCompareKey(locationCompareKey);
-  }, [
-    comparePointItems,
-    hit?.hitId,
-    locationCompareKey,
-    normalizedComparePdfId,
-  ]);
+  }, [comparePointItems, hit?.hitId, locationCompareKey, normalizedComparePdfId]);
 
   useEffect(() => {
     if (comparePointItems.length === 0) {
-      setSelectedCompareKey("");
+      setSelectedCompareKey('');
       return;
     }
 
-    setSelectedCompareKey((currentCompareKey) => {
+    setSelectedCompareKey(currentCompareKey => {
       const currentComparePoint = comparePointItems.find(
-        (item) => item.compareKey === currentCompareKey,
+        item => item.compareKey === currentCompareKey
       );
-      if (
-        currentComparePoint &&
-        (!normalizedComparePdfId || currentComparePoint.compareHit)
-      ) {
+      if (currentComparePoint && (!normalizedComparePdfId || currentComparePoint.compareHit)) {
         return currentCompareKey;
       }
 
-      return (
-        fallbackComparePointItems[0]?.compareKey ??
-        comparePointItems[0].compareKey
-      );
+      return fallbackComparePointItems[0]?.compareKey ?? comparePointItems[0].compareKey;
     });
   }, [comparePointItems, fallbackComparePointItems, normalizedComparePdfId]);
 
   const selectedComparePoint = useMemo(() => {
     return (
-      comparePointItems.find(
-        (item) => item.compareKey === selectedCompareKey,
-      ) ??
+      comparePointItems.find(item => item.compareKey === selectedCompareKey) ??
       fallbackComparePointItems[0] ??
       null
     );
@@ -407,7 +348,7 @@ export default function PdfViewerPage() {
   const selectedCompareHit = selectedComparePoint?.compareHit ?? null;
 
   const { data: primaryGroupHits, error: primaryGroupHitsError } = useQuery({
-    queryKey: ["highlight-group-hits", selectedPrimaryHit?.groupId],
+    queryKey: ['highlight-group-hits', selectedPrimaryHit?.groupId],
     queryFn: ({ signal }) =>
       fetchHighlightGroupHits(String(selectedPrimaryHit?.groupId), { signal }),
     enabled: Boolean(selectedPrimaryHit?.groupId),
@@ -415,7 +356,7 @@ export default function PdfViewerPage() {
   });
 
   const { data: compareGroupHits, error: compareGroupHitsError } = useQuery({
-    queryKey: ["highlight-group-hits", selectedCompareHit?.groupId],
+    queryKey: ['highlight-group-hits', selectedCompareHit?.groupId],
     queryFn: ({ signal }) =>
       fetchHighlightGroupHits(String(selectedCompareHit?.groupId), { signal }),
     enabled: Boolean(selectedCompareHit?.groupId),
@@ -424,46 +365,43 @@ export default function PdfViewerPage() {
 
   const primaryActiveHits = useMemo(
     () => buildActiveHits(selectedPrimaryHit, primaryGroupHits),
-    [primaryGroupHits, selectedPrimaryHit],
+    [primaryGroupHits, selectedPrimaryHit]
   );
   const compareActiveHits = useMemo(
     () => buildActiveHits(selectedCompareHit, compareGroupHits),
-    [compareGroupHits, selectedCompareHit],
+    [compareGroupHits, selectedCompareHit]
   );
   const primaryTargetPageNum = useMemo(
     () => resolveTargetPageNum(selectedPrimaryHit, primaryActiveHits),
-    [primaryActiveHits, selectedPrimaryHit],
+    [primaryActiveHits, selectedPrimaryHit]
   );
   const compareTargetPageNum = useMemo(
     () => resolveTargetPageNum(selectedCompareHit, compareActiveHits),
-    [compareActiveHits, selectedCompareHit],
+    [compareActiveHits, selectedCompareHit]
   );
   const safePrimaryTargetPageNum = useMemo(
     () => clampPageNum(primaryTargetPageNum, primaryMeta?.totalPages),
-    [primaryMeta?.totalPages, primaryTargetPageNum],
+    [primaryMeta?.totalPages, primaryTargetPageNum]
   );
   const safeCompareTargetPageNum = useMemo(
     () => clampPageNum(compareTargetPageNum, compareMeta?.totalPages),
-    [compareMeta?.totalPages, compareTargetPageNum],
+    [compareMeta?.totalPages, compareTargetPageNum]
   );
   const safePrimaryCurrentPageNum = useMemo(
     () => clampPageNum(primaryCurrentPage, primaryMeta?.totalPages),
-    [primaryCurrentPage, primaryMeta?.totalPages],
+    [primaryCurrentPage, primaryMeta?.totalPages]
   );
   const safeCompareCurrentPageNum = useMemo(
     () => clampPageNum(compareCurrentPage, compareMeta?.totalPages),
-    [compareCurrentPage, compareMeta?.totalPages],
+    [compareCurrentPage, compareMeta?.totalPages]
   );
-  const primaryTargetAnchorKey = selectedPrimaryHit?.hitId ?? "";
-  const compareTargetAnchorKey = selectedCompareHit?.hitId ?? "";
-  const primaryPreviewUrl = primaryPreviewData?.previewUrl ?? "";
-  const comparePreviewUrl = comparePreviewData?.previewUrl ?? "";
-  const primaryFileName =
-    selectedPrimaryHit?.fileName ?? primaryAnchorHits[0]?.fileName ?? pdfId;
+  const primaryTargetAnchorKey = selectedPrimaryHit?.hitId ?? '';
+  const compareTargetAnchorKey = selectedCompareHit?.hitId ?? '';
+  const primaryPreviewUrl = primaryPreviewData?.previewUrl ?? '';
+  const comparePreviewUrl = comparePreviewData?.previewUrl ?? '';
+  const primaryFileName = selectedPrimaryHit?.fileName ?? primaryAnchorHits[0]?.fileName ?? pdfId;
   const compareFileName =
-    selectedCompareHit?.fileName ??
-    sortedCompareTestHits[0]?.fileName ??
-    normalizedComparePdfId;
+    selectedCompareHit?.fileName ?? sortedCompareTestHits[0]?.fileName ?? normalizedComparePdfId;
 
   // 打开当前主文档的源文件下载链接。
   async function handleDownloadSource() {
@@ -472,14 +410,12 @@ export default function PdfViewerPage() {
     }
 
     setIsOpeningSource(true);
-    setSourceUrlErrorText("");
+    setSourceUrlErrorText('');
     try {
       const sourceData = await fetchPdfSourceUrl(pdfId);
-      window.open(sourceData.sourceUrl, "_blank", "noopener,noreferrer");
+      window.open(sourceData.sourceUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      setSourceUrlErrorText(
-        getRequestErrorMessage(error, "获取源文件下载地址失败"),
-      );
+      setSourceUrlErrorText(getRequestErrorMessage(error, '获取源文件下载地址失败'));
     } finally {
       setIsOpeningSource(false);
     }
@@ -489,9 +425,9 @@ export default function PdfViewerPage() {
   function updateComparePdfId(nextComparePdfId: string) {
     const nextSearchParams = new URLSearchParams(searchParams);
     if (nextComparePdfId) {
-      nextSearchParams.set("comparePdfId", nextComparePdfId);
+      nextSearchParams.set('comparePdfId', nextComparePdfId);
     } else {
-      nextSearchParams.delete("comparePdfId");
+      nextSearchParams.delete('comparePdfId');
     }
     setSearchParams(nextSearchParams, { replace: false });
   }
@@ -500,25 +436,25 @@ export default function PdfViewerPage() {
   function handleApplyComparePdfId() {
     const nextComparePdfId = normalizePdfId(comparePdfIdInput);
     if (!nextComparePdfId) {
-      setCompareInputErrorText("");
-      updateComparePdfId("");
+      setCompareInputErrorText('');
+      updateComparePdfId('');
       return;
     }
 
     if (nextComparePdfId === pdfId) {
-      setCompareInputErrorText("对比文档不能与当前文档相同");
+      setCompareInputErrorText('对比文档不能与当前文档相同');
       return;
     }
 
-    setCompareInputErrorText("");
+    setCompareInputErrorText('');
     updateComparePdfId(nextComparePdfId);
   }
 
   // 清空当前对比文档，回退到单文档预览模式。
   function handleClearComparePdfId() {
-    setCompareInputErrorText("");
-    setComparePdfIdInput("");
-    updateComparePdfId("");
+    setCompareInputErrorText('');
+    setComparePdfIdInput('');
+    updateComparePdfId('');
   }
 
   // 渲染单个 PDF 预览面板，保持左右栏结构与交互一致。
@@ -550,17 +486,15 @@ export default function PdfViewerPage() {
             <Typography.Text
               style={{
                 fontSize: 16,
-                color: "#0f172a",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                color: '#0f172a',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
-              {options.fileName || options.panePdfId || "未命名文档"}
+              {options.fileName || options.panePdfId || '未命名文档'}
             </Typography.Text>
-            <Typography.Text type="secondary">
-              PDF ID: {options.panePdfId}
-            </Typography.Text>
+            <Typography.Text type="secondary">PDF ID: {options.panePdfId}</Typography.Text>
           </StyledViewerPaneMeta>
           {options.totalPages ? (
             <StyledPageIndicator>
@@ -574,20 +508,14 @@ export default function PdfViewerPage() {
           {options.metaError ? (
             <Alert
               type="error"
-              message={getRequestErrorMessage(
-                options.metaError,
-                "加载 meta 失败",
-              )}
+              message={getRequestErrorMessage(options.metaError, '加载 meta 失败')}
               showIcon
             />
           ) : null}
           {options.previewError ? (
             <Alert
               type="warning"
-              message={getRequestErrorMessage(
-                options.previewError,
-                "获取预览地址失败",
-              )}
+              message={getRequestErrorMessage(options.previewError, '获取预览地址失败')}
               showIcon
             />
           ) : null}
@@ -596,7 +524,7 @@ export default function PdfViewerPage() {
               type="warning"
               message={getRequestErrorMessage(
                 options.groupError,
-                "加载同组高亮失败，已回退单点高亮",
+                '加载同组高亮失败，已回退单点高亮'
               )}
               showIcon
             />
@@ -615,10 +543,7 @@ export default function PdfViewerPage() {
           {!isPaneLoading && !options.meta && !options.metaError ? (
             <Empty description="暂无文档索引" />
           ) : null}
-          {!isPaneLoading &&
-          options.meta &&
-          !options.previewUrl &&
-          !options.previewError ? (
+          {!isPaneLoading && options.meta && !options.previewUrl && !options.previewError ? (
             <Empty description="暂无可用预览地址" />
           ) : null}
         </StyledViewerPaneBody>
@@ -637,22 +562,22 @@ export default function PdfViewerPage() {
   return (
     <StyledContainer>
       <Card>
-        <Space direction="vertical" size={8} style={{ width: "100%" }}>
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
           <Typography.Title level={4} style={{ margin: 0 }}>
             PDF 对比预览与高亮定位
           </Typography.Title>
           <Space wrap size={12}>
-            <Button onClick={() => navigate("/hits")}>返回列表</Button>
+            <Button onClick={() => navigate('/hits')}>返回列表</Button>
             <Button loading={isOpeningSource} onClick={handleDownloadSource}>
               下载当前源文件
             </Button>
-            <Space.Compact style={{ minWidth: 320, maxWidth: "100%" }}>
+            <Space.Compact style={{ minWidth: 320, maxWidth: '100%' }}>
               <Input
                 value={comparePdfIdInput}
                 placeholder="输入对比文档 pdfId"
-                onChange={(event) => {
+                onChange={event => {
                   setComparePdfIdInput(event.target.value);
-                  setCompareInputErrorText("");
+                  setCompareInputErrorText('');
                 }}
                 onPressEnter={handleApplyComparePdfId}
               />
@@ -663,11 +588,10 @@ export default function PdfViewerPage() {
             </Space.Compact>
             {selectedPrimaryHit ? (
               <Typography.Text type="secondary">
-                当前关键点：{selectedPrimaryHit.keyword} / 左侧第{" "}
-                {safePrimaryTargetPageNum} 页
+                当前关键点：{selectedPrimaryHit.keyword} / 左侧第 {safePrimaryTargetPageNum} 页
                 {normalizedComparePdfId && selectedCompareHit
                   ? ` / 右侧第 ${safeCompareTargetPageNum} 页`
-                  : ""}
+                  : ''}
               </Typography.Text>
             ) : null}
           </Space>
@@ -690,14 +614,9 @@ export default function PdfViewerPage() {
                 </Typography.Text>
                 {normalizedComparePdfId ? (
                   <Typography.Text
-                    type={
-                      matchedComparePointItems.length > 0
-                        ? "secondary"
-                        : "warning"
-                    }
+                    type={matchedComparePointItems.length > 0 ? 'secondary' : 'warning'}
                   >
-                    已匹配 {matchedComparePointItems.length} /{" "}
-                    {comparePointItems.length} 个对比点
+                    已匹配 {matchedComparePointItems.length} / {comparePointItems.length} 个对比点
                   </Typography.Text>
                 ) : null}
               </StyledSidebarHeaderMeta>
@@ -707,20 +626,14 @@ export default function PdfViewerPage() {
                 <Alert
                   type="warning"
                   showIcon
-                  message={getRequestErrorMessage(
-                    primaryTestHitsError,
-                    "加载主文档测试项失败",
-                  )}
+                  message={getRequestErrorMessage(primaryTestHitsError, '加载主文档测试项失败')}
                 />
               ) : null}
               {compareTestHitsError ? (
                 <Alert
                   type="warning"
                   showIcon
-                  message={getRequestErrorMessage(
-                    compareTestHitsError,
-                    "加载对比文档测试项失败",
-                  )}
+                  message={getRequestErrorMessage(compareTestHitsError, '加载对比文档测试项失败')}
                 />
               ) : null}
               {normalizedComparePdfId &&
@@ -736,15 +649,11 @@ export default function PdfViewerPage() {
               {comparePointItems.length === 0 && !primaryTestHitsError ? (
                 <Empty description="暂无关键点" />
               ) : null}
-              {comparePointItems.map((item) => {
+              {comparePointItems.map(item => {
                 const isActive = item.compareKey === selectedCompareKey;
-                const isDisabled = Boolean(
-                  normalizedComparePdfId && !item.compareHit,
-                );
+                const isDisabled = Boolean(normalizedComparePdfId && !item.compareHit);
                 const sequenceText =
-                  item.occurrenceIndex > 0
-                    ? ` · 同关键词第 ${item.occurrenceIndex + 1} 处`
-                    : "";
+                  item.occurrenceIndex > 0 ? ` · 同关键词第 ${item.occurrenceIndex + 1} 处` : '';
                 return (
                   <StyledSidebarItem
                     key={item.compareKey}
@@ -763,12 +672,12 @@ export default function PdfViewerPage() {
                     </StyledSidebarItemTitle>
                     <StyledSidebarItemMeta>
                       左侧：第 {item.primaryHit.pageNum} 页
-                      {item.primaryHit.groupId ? " · 多段高亮" : " · 单点高亮"}
+                      {item.primaryHit.groupId ? ' · 多段高亮' : ' · 单点高亮'}
                       {normalizedComparePdfId
                         ? item.compareHit
                           ? ` / 右侧：第 ${item.compareHit.pageNum} 页`
-                          : " / 右侧：未匹配"
-                        : ""}
+                          : ' / 右侧：未匹配'
+                        : ''}
                     </StyledSidebarItemMeta>
                   </StyledSidebarItem>
                 );
@@ -783,7 +692,7 @@ export default function PdfViewerPage() {
           ) : null}
           <StyledViewerGrid $dual={Boolean(normalizedComparePdfId)}>
             {renderViewerPane({
-              badgeLabel: "主文档",
+              badgeLabel: '主文档',
               fileName: primaryFileName,
               panePdfId: pdfId,
               currentPage: safePrimaryCurrentPageNum,
@@ -803,7 +712,7 @@ export default function PdfViewerPage() {
 
             {normalizedComparePdfId
               ? renderViewerPane({
-                  badgeLabel: "对比文档",
+                  badgeLabel: '对比文档',
                   fileName: compareFileName,
                   panePdfId: normalizedComparePdfId,
                   currentPage: safeCompareCurrentPageNum,

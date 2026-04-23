@@ -20,17 +20,12 @@ export function toViewportRect(viewport: PageViewport, activeHit: HighlightHitIt
   const pdfY0 = viewY0 + (pageHeight - localY1);
   const pdfY1 = viewY0 + (pageHeight - localY0);
 
-  const [x1, y1, x2, y2] = viewport.convertToViewportRectangle([
-    pdfX0,
-    pdfY0,
-    pdfX1,
-    pdfY1
-  ]);
+  const [x1, y1, x2, y2] = viewport.convertToViewportRectangle([pdfX0, pdfY0, pdfX1, pdfY1]);
 
   return {
     left: Math.min(x1, x2),
     top: Math.min(y1, y2),
     width: Math.abs(x2 - x1),
-    height: Math.abs(y2 - y1)
+    height: Math.abs(y2 - y1),
   };
 }

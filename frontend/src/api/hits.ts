@@ -10,22 +10,37 @@ export interface FetchHitsParams {
 }
 
 // 获取分页命中列表，用于列表页展示和跳转。
-export async function fetchHighlightHits(params: FetchHitsParams, options?: RequestOptions): Promise<HighlightHitPage> {
+export async function fetchHighlightHits(
+  params: FetchHitsParams,
+  options?: RequestOptions
+): Promise<HighlightHitPage> {
   const response = await requestClient.get<ApiResponse<HighlightHitPage>>('/api/highlight-hits', {
     ...options,
-    params
+    params,
   });
   return response.data;
 }
 
 // 获取同一 groupId 下的全部命中，用于预览页恢复连贯高亮效果。
-export async function fetchHighlightGroupHits(groupId: string, options?: RequestOptions): Promise<HighlightHitItem[]> {
-  const response = await requestClient.get<ApiResponse<HighlightHitItem[]>>(`/api/highlight-groups/${groupId}`, options);
+export async function fetchHighlightGroupHits(
+  groupId: string,
+  options?: RequestOptions
+): Promise<HighlightHitItem[]> {
+  const response = await requestClient.get<ApiResponse<HighlightHitItem[]>>(
+    `/api/highlight-groups/${groupId}`,
+    options
+  );
   return response.data;
 }
 
 // 获取指定文档的全部测试项锚点，用于预览页侧边栏。
-export async function fetchPdfTestHits(pdfId: string, options?: RequestOptions): Promise<HighlightHitItem[]> {
-  const response = await requestClient.get<ApiResponse<HighlightHitItem[]>>(`/api/pdf/${pdfId}/test-hits`, options);
+export async function fetchPdfTestHits(
+  pdfId: string,
+  options?: RequestOptions
+): Promise<HighlightHitItem[]> {
+  const response = await requestClient.get<ApiResponse<HighlightHitItem[]>>(
+    `/api/pdf/${pdfId}/test-hits`,
+    options
+  );
   return response.data;
 }

@@ -1,5 +1,5 @@
-import type { HighlightHitItem, PdfMetaData } from "../../../types/pdf";
-import type { ViewportRect } from "../HighlightOverlay";
+import type { HighlightHitItem, PdfMetaData } from '../../../types/pdf';
+import type { ViewportRect } from '../HighlightOverlay';
 
 // 主 Viewer 组件属性。
 export interface PdfVirtualViewerProps {
@@ -23,8 +23,8 @@ export interface PdfPageCanvasProps {
   pageWidth: number;
   pageHeight: number;
   warmupPage: (
-    pageNum: number,
-  ) => Promise<import("pdfjs-dist/types/src/display/api").PDFPageProxy | null>;
+    pageNum: number
+  ) => Promise<import('pdfjs-dist/types/src/display/api').PDFPageProxy | null>;
   activeHits?: HighlightHitItem[];
   onPageMeasured?: (pageNum: number, width: number, height: number) => void;
   onPrimaryHighlightReady?: (pageNum: number, rect: ViewportRect) => void;

@@ -4,7 +4,9 @@ import type { RequestCancelHandler, RequestLifecycleOptions } from './types';
 type ManagedExternalSignal = AbortSignal | GenericAbortSignal;
 
 // 管理内部 AbortController，并向外暴露手动取消句柄。
-export function createManagedRequestController(options?: RequestLifecycleOptions<ManagedExternalSignal>) {
+export function createManagedRequestController(
+  options?: RequestLifecycleOptions<ManagedExternalSignal>
+) {
   const controller = new AbortController();
   const externalSignal = options?.signal;
 
@@ -15,7 +17,8 @@ export function createManagedRequestController(options?: RequestLifecycleOptions
   };
 
   const handleExternalAbort = () => {
-    const signalReason = externalSignal && 'reason' in externalSignal ? externalSignal.reason : undefined;
+    const signalReason =
+      externalSignal && 'reason' in externalSignal ? externalSignal.reason : undefined;
     cancel(typeof signalReason === 'string' ? signalReason : '外部已取消请求');
   };
 
@@ -34,6 +37,6 @@ export function createManagedRequestController(options?: RequestLifecycleOptions
     cancel,
     dispose() {
       externalSignal?.removeEventListener?.('abort', handleExternalAbort);
-    }
+    },
   };
 }

@@ -6,6 +6,11 @@ export {
   normalizeRequestError,
   requestClient,
   resolveRequestUrl,
-  streamRequest
+  streamRequest,
 } from '../request';
-export type { RequestCancelHandler, RequestOptions, StreamChunkPayload, StreamRequestOptions } from '../request';
+export type {
+  RequestCancelHandler,
+  RequestOptions,
+  StreamChunkPayload,
+  StreamRequestOptions,
+} from '../request';

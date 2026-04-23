@@ -31,7 +31,10 @@ function preparePdfJsAssets(): void {
   const publicPdfjsRoot = join(projectRoot, 'public', 'pdfjs');
 
   copyDirectoryRecursive(join(pdfjsRoot, 'cmaps'), join(publicPdfjsRoot, 'cmaps'));
-  copyDirectoryRecursive(join(pdfjsRoot, 'standard_fonts'), join(publicPdfjsRoot, 'standard_fonts'));
+  copyDirectoryRecursive(
+    join(pdfjsRoot, 'standard_fonts'),
+    join(publicPdfjsRoot, 'standard_fonts')
+  );
 }
 
 preparePdfJsAssets();
@@ -40,6 +43,6 @@ preparePdfJsAssets();
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173
-  }
+    port: 5173,
+  },
 });

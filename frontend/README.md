@@ -76,7 +76,7 @@ let cancelRequest: ((reason?: string) => void) | undefined;
 const data = await fetchPdfMeta('doc_001', {
   onCancel(cancel) {
     cancelRequest = cancel;
-  }
+  },
 });
 
 cancelRequest?.('用户手动取消');

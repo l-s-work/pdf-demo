@@ -9,7 +9,7 @@ import {
   StyledPagePlaceholder,
   StyledSelectionLayer,
   StyledSelectionRect,
-  StyledTextLayer
+  StyledTextLayer,
 } from './styles';
 import type { PdfPageCanvasProps } from './types';
 
@@ -24,7 +24,7 @@ export default function PdfPageCanvas({
   warmupPage,
   activeHits,
   onPageMeasured,
-  onPrimaryHighlightReady
+  onPrimaryHighlightReady,
 }: PdfPageCanvasProps) {
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -38,19 +38,21 @@ export default function PdfPageCanvas({
   const lastCanvasHighlightSignatureRef = useRef<string | null>(null);
   function buildRectSignature(rects: ViewportRect[]): string {
     return rects
-      .map((rect) => [
-        rect.left.toFixed(2),
-        rect.top.toFixed(2),
-        rect.width.toFixed(2),
-        rect.height.toFixed(2),
-      ].join(','))
+      .map(rect =>
+        [
+          rect.left.toFixed(2),
+          rect.top.toFixed(2),
+          rect.width.toFixed(2),
+          rect.height.toFixed(2),
+        ].join(',')
+      )
       .join('|');
   }
 
   function mergeSelectionRects(rects: ViewportRect[]): ViewportRect[] {
     const validRects = rects
-      .filter((rect) => rect.width > 0.5 && rect.height > 0.5)
-      .sort((left, right) => (left.top - right.top) || (left.left - right.left));
+      .filter(rect => rect.width > 0.5 && rect.height > 0.5)
+      .sort((left, right) => left.top - right.top || left.left - right.left);
     if (validRects.length === 0) {
       return [];
     }
@@ -77,7 +79,7 @@ export default function PdfPageCanvas({
     // 第一步：去重（同位置多层 span 导致的重复 rect）。
     const dedupedRects: ViewportRect[] = [];
     for (const rect of validRects) {
-      const duplicateIndex = dedupedRects.findIndex((item) => {
+      const duplicateIndex = dedupedRects.findIndex(item => {
         const overlapRatio = iou(item, rect);
         if (overlapRatio >= 0.7) {
           return true;
@@ -111,10 +113,10 @@ export default function PdfPageCanvas({
       const rectTop = rect.top;
       const rectBottom = rect.top + rect.height;
       const rectCenter = (rectTop + rectBottom) / 2;
-      const line = lines.find((item) => {
+      const line = lines.find(item => {
         const itemCenter = (item.top + item.bottom) / 2;
         const verticalGap = Math.abs(itemCenter - rectCenter);
-        const averageHeight = ((item.bottom - item.top) + rect.height) / 2;
+        const averageHeight = (item.bottom - item.top + rect.height) / 2;
         return verticalGap <= averageHeight * 0.6;
       });
 
@@ -122,7 +124,7 @@ export default function PdfPageCanvas({
         lines.push({
           top: rectTop,
           bottom: rectBottom,
-          rects: [{ ...rect }]
+          rects: [{ ...rect }],
         });
         continue;
       }
@@ -165,7 +167,7 @@ export default function PdfPageCanvas({
       mergedRects.push(...mergedLineRects);
     }
 
-    return mergedRects.sort((left, right) => (left.top - right.top) || (left.left - right.left));
+    return mergedRects.sort((left, right) => left.top - right.top || left.left - right.left);
   }
 
   function updateSelectionRects() {
@@ -203,7 +205,7 @@ export default function PdfPageCanvas({
           left: intersectionLeft - frameRect.left,
           top: intersectionTop - frameRect.top,
           width: intersectionRight - intersectionLeft,
-          height: intersectionBottom - intersectionTop
+          height: intersectionBottom - intersectionTop,
         });
       }
     }
@@ -287,9 +289,10 @@ export default function PdfPageCanvas({
       try {
         await renderTask.promise;
       } catch (error) {
-        const errorName = typeof error === 'object' && error !== null && 'name' in error
-          ? String((error as { name?: string }).name ?? '')
-          : '';
+        const errorName =
+          typeof error === 'object' && error !== null && 'name' in error
+            ? String((error as { name?: string }).name ?? '')
+            : '';
         if (disposed || errorName === 'RenderingCancelledException') {
           return;
         }
@@ -306,10 +309,10 @@ export default function PdfPageCanvas({
 
       setIsCanvasReady(true);
 
-      const pageHits = (activeHits ?? []).filter((item) => item.pageNum === pageNum);
+      const pageHits = (activeHits ?? []).filter(item => item.pageNum === pageNum);
       const pageHighlightRects = pageHits
-        .map((item) => toViewportRect(viewport, item))
-        .sort((left, right) => (left.top - right.top) || (left.left - right.left));
+        .map(item => toViewportRect(viewport, item))
+        .sort((left, right) => left.top - right.top || left.left - right.left);
       const highlightSignature = buildRectSignature(pageHighlightRects);
       if (lastCanvasHighlightSignatureRef.current !== highlightSignature) {
         lastCanvasHighlightSignatureRef.current = highlightSignature;
@@ -334,7 +337,7 @@ export default function PdfPageCanvas({
         const textLayer = new TextLayer({
           textContentSource: textContent,
           container: textLayerElement,
-          viewport
+          viewport,
         });
         textLayerTaskRef.current = textLayer;
         await textLayer.render();
@@ -352,14 +355,7 @@ export default function PdfPageCanvas({
       textLayerTaskRef.current = null;
       setSelectionRects([]);
     };
-  }, [
-    activeHits,
-    isDocumentReady,
-    onPageMeasured,
-    pageNum,
-    scale,
-    warmupPage
-  ]);
+  }, [activeHits, isDocumentReady, onPageMeasured, pageNum, scale, warmupPage]);
 
   return (
     <StyledPageFrame ref={pageFrameRef} $pageWidth={pageWidth} $pageHeight={pageHeight}>
@@ -378,7 +374,7 @@ export default function PdfPageCanvas({
               left: rect.left,
               top: rect.top,
               width: rect.width,
-              height: rect.height
+              height: rect.height,
             }}
           />
         ))}

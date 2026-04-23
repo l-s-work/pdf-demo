@@ -1,24 +1,15 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Alert,
-  Button,
-  Card,
-  Input,
-  InputNumber,
-  Space,
-  Table,
-  Typography,
-} from "antd";
-import { getRequestErrorMessage } from "../../api/http";
-import { fetchHighlightHits } from "../../api/hits";
-import { createPdfUploadJob } from "../../api/pdf";
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Button, Card, Input, InputNumber, Space, Table, Typography } from 'antd';
+import { getRequestErrorMessage } from '../../api/http';
+import { fetchHighlightHits } from '../../api/hits';
+import { createPdfUploadJob } from '../../api/pdf';
 import type {
   HighlightHitItem,
   ManualHighlightInputItem,
   PdfUploadJobCreateResult,
-} from "../../types/pdf";
+} from '../../types/pdf';
 import {
   StyledContainer,
   StyledFileInput,
@@ -28,8 +19,8 @@ import {
   StyledSectionStack,
   StyledUploadField,
   StyledUploadGrid,
-} from "./styles";
-import { createHitColumns } from "./tableColumns";
+} from './styles';
+import { createHitColumns } from './tableColumns';
 
 // 上传区测试项草稿结构。
 interface ManualHighlightDraftItem {
@@ -43,7 +34,7 @@ function createDraftItem(): ManualHighlightDraftItem {
   return {
     id: `draft_${Math.random().toString(36).slice(2, 10)}`,
     pageNum: 1,
-    keyword: "",
+    keyword: '',
   };
 }
 
@@ -53,19 +44,16 @@ export default function HitListPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [keyword, setKeyword] = useState("");
-  const [pdfId, setPdfId] = useState("");
+  const [keyword, setKeyword] = useState('');
+  const [pdfId, setPdfId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [manualItems, setManualItems] = useState<ManualHighlightDraftItem[]>([
-    createDraftItem(),
-  ]);
-  const [localError, setLocalError] = useState("");
-  const [lastSubmittedJob, setLastSubmittedJob] =
-    useState<PdfUploadJobCreateResult | null>(null);
+  const [manualItems, setManualItems] = useState<ManualHighlightDraftItem[]>([createDraftItem()]);
+  const [localError, setLocalError] = useState('');
+  const [lastSubmittedJob, setLastSubmittedJob] = useState<PdfUploadJobCreateResult | null>(null);
 
   // 查询分页命中数据；当后台任务未结束时自动轮询，避免预览时拿不到定位信息。
   const { data, isLoading, error } = useQuery({
-    queryKey: ["highlight-hits", page, pageSize, keyword, pdfId],
+    queryKey: ['highlight-hits', page, pageSize, keyword, pdfId],
     queryFn: ({ signal }) =>
       fetchHighlightHits(
         {
@@ -74,51 +62,38 @@ export default function HitListPage() {
           keyword: keyword || undefined,
           pdfId: pdfId || undefined,
         },
-        { signal },
+        { signal }
       ),
-    refetchInterval: (query) =>
-      query.state.data?.hasPendingJobs ? 5000 : false,
+    refetchInterval: query => (query.state.data?.hasPendingJobs ? 5000 : false),
   });
 
   const columns = useMemo(() => createHitColumns(navigate), [navigate]);
 
   const uploadMutation = useMutation({
-    mutationFn: ({
-      file,
-      items,
-    }: {
-      file: File;
-      items: ManualHighlightInputItem[];
-    }) => createPdfUploadJob(file, items),
-    onSuccess: (result) => {
+    mutationFn: ({ file, items }: { file: File; items: ManualHighlightInputItem[] }) =>
+      createPdfUploadJob(file, items),
+    onSuccess: result => {
       setPdfId(result.pdfId);
       setPage(1);
-      setLocalError("");
+      setLocalError('');
       setLastSubmittedJob(result);
-      void queryClient.invalidateQueries({ queryKey: ["highlight-hits"] });
+      void queryClient.invalidateQueries({ queryKey: ['highlight-hits'] });
     },
   });
 
   const errorMessage =
     localError ||
-    (uploadMutation.error
-      ? getRequestErrorMessage(uploadMutation.error, "上传文件失败")
-      : "");
+    (uploadMutation.error ? getRequestErrorMessage(uploadMutation.error, '上传文件失败') : '');
 
-  function updateManualItem(
-    itemId: string,
-    patch: Partial<ManualHighlightDraftItem>,
-  ) {
-    setManualItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === itemId ? { ...item, ...patch } : item,
-      ),
+  function updateManualItem(itemId: string, patch: Partial<ManualHighlightDraftItem>) {
+    setManualItems(currentItems =>
+      currentItems.map(item => (item.id === itemId ? { ...item, ...patch } : item))
     );
   }
 
   function normalizeManualItems(): ManualHighlightInputItem[] {
     return manualItems
-      .map<ManualHighlightInputItem | null>((item) => {
+      .map<ManualHighlightInputItem | null>(item => {
         const normalizedKeyword = item.keyword.trim();
         if (!normalizedKeyword) {
           return null;
@@ -134,17 +109,17 @@ export default function HitListPage() {
 
   function handleUpload() {
     if (!selectedFile) {
-      setLocalError("请先选择一个 PDF 或 Word 文件");
+      setLocalError('请先选择一个 PDF 或 Word 文件');
       return;
     }
 
     const items = normalizeManualItems();
     if (items.length === 0) {
-      setLocalError("请至少填写一条“页码 + 关键词”测试项");
+      setLocalError('请至少填写一条“页码 + 关键词”测试项');
       return;
     }
 
-    setLocalError("");
+    setLocalError('');
     uploadMutation.mutate({ file: selectedFile, items });
   }
 
@@ -160,10 +135,8 @@ export default function HitListPage() {
             </Typography.Paragraph>
           </StyledHeader>
 
-          <Space direction="vertical" size={16} style={{ width: "100%" }}>
-            {errorMessage ? (
-              <Alert type="error" showIcon message={errorMessage} />
-            ) : null}
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            {errorMessage ? <Alert type="error" showIcon message={errorMessage} /> : null}
             {lastSubmittedJob ? (
               <Alert
                 type="info"
@@ -179,23 +152,19 @@ export default function HitListPage() {
                 <StyledFileInput
                   type="file"
                   accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={(event) => {
+                  onChange={event => {
                     setSelectedFile(event.target.files?.[0] ?? null);
-                    setLocalError("");
+                    setLocalError('');
                   }}
                 />
                 <Space wrap>
-                  <Button
-                    type="primary"
-                    loading={uploadMutation.isPending}
-                    onClick={handleUpload}
-                  >
+                  <Button type="primary" loading={uploadMutation.isPending} onClick={handleUpload}>
                     上传并入库
                   </Button>
                   <Typography.Text type="secondary">
                     {selectedFile
                       ? `当前文件：${selectedFile.name}`
-                      : "请选择一个本地 PDF 或 Word 文件"}
+                      : '请选择一个本地 PDF 或 Word 文件'}
                   </Typography.Text>
                 </Space>
               </StyledUploadField>
@@ -208,17 +177,17 @@ export default function HitListPage() {
                       <InputNumber
                         min={1}
                         value={item.pageNum}
-                        onChange={(value) =>
+                        onChange={value =>
                           updateManualItem(item.id, {
                             pageNum: Number(value || 1),
                           })
                         }
                         placeholder="页码"
-                        style={{ width: "100%" }}
+                        style={{ width: '100%' }}
                       />
                       <Input
                         value={item.keyword}
-                        onChange={(event) =>
+                        onChange={event =>
                           updateManualItem(item.id, {
                             keyword: event.target.value,
                           })
@@ -229,10 +198,8 @@ export default function HitListPage() {
                         danger
                         disabled={manualItems.length === 1}
                         onClick={() =>
-                          setManualItems((items) =>
-                            items.filter(
-                              (currentItem) => currentItem.id !== item.id,
-                            ),
+                          setManualItems(items =>
+                            items.filter(currentItem => currentItem.id !== item.id)
                           )
                         }
                       >
@@ -242,16 +209,10 @@ export default function HitListPage() {
                   ))}
                 </StyledManualItemList>
                 <Space wrap>
-                  <Button
-                    onClick={() =>
-                      setManualItems((items) => [...items, createDraftItem()])
-                    }
-                  >
+                  <Button onClick={() => setManualItems(items => [...items, createDraftItem()])}>
                     新增一条
                   </Button>
-                  <Button onClick={() => setManualItems([createDraftItem()])}>
-                    重置
-                  </Button>
+                  <Button onClick={() => setManualItems([createDraftItem()])}>重置</Button>
                 </Space>
               </StyledUploadField>
             </StyledUploadGrid>
@@ -273,20 +234,20 @@ export default function HitListPage() {
               <Alert
                 type="error"
                 showIcon
-                message={getRequestErrorMessage(error, "加载命中列表失败")}
+                message={getRequestErrorMessage(error, '加载命中列表失败')}
                 style={{ marginBottom: 12 }}
               />
             ) : null}
             <Space wrap>
               <Input
                 value={pdfId}
-                onChange={(event) => setPdfId(event.target.value)}
+                onChange={event => setPdfId(event.target.value)}
                 placeholder="按文档ID过滤"
                 style={{ width: 220 }}
               />
               <Input
                 value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
+                onChange={event => setKeyword(event.target.value)}
                 placeholder="按关键词过滤"
                 style={{ width: 220 }}
               />

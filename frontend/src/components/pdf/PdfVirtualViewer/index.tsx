@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert } from "antd";
-import { usePdfDocument } from "../../../hooks/usePdfDocument";
-import { usePdfVirtualizer } from "../../../hooks/usePdfVirtualizer";
-import { getRequestErrorMessage } from "../../../api/http";
-import {
-  StyledContainer,
-  StyledPageSlot,
-  StyledScrollContainer,
-} from "./styles";
-import type { ViewportRect } from "../HighlightOverlay";
-import type { PdfVirtualViewerProps } from "./types";
-import PdfPageCanvas from "./PdfPageCanvas";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'antd';
+import { usePdfDocument } from '../../../hooks/usePdfDocument';
+import { usePdfVirtualizer } from '../../../hooks/usePdfVirtualizer';
+import { getRequestErrorMessage } from '../../../api/http';
+import { StyledContainer, StyledPageSlot, StyledScrollContainer } from './styles';
+import type { ViewportRect } from '../HighlightOverlay';
+import type { PdfVirtualViewerProps } from './types';
+import PdfPageCanvas from './PdfPageCanvas';
 
 // PDF 虚拟页面组件：支持目标页优先打开，并预热附近页的数据。
 export default function PdfVirtualViewer({
@@ -25,16 +21,10 @@ export default function PdfVirtualViewer({
   onCurrentPageChange,
 }: PdfVirtualViewerProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const { pdfDoc, error, warmupPage } = usePdfDocument(
-    pdfId,
-    pdfUrl,
-    preferStreaming,
-  );
+  const { pdfDoc, error, warmupPage } = usePdfDocument(pdfId, pdfUrl, preferStreaming);
   const [scale, setScale] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
-  const [measuredPageHeights, setMeasuredPageHeights] = useState<
-    Record<number, number>
-  >({});
+  const [measuredPageHeights, setMeasuredPageHeights] = useState<Record<number, number>>({});
   const [highlightAlignVersion, setHighlightAlignVersion] = useState(0);
   const anchoredHighlightKeyRef = useRef<string | null>(null);
   const hasAutoAlignedHighlightRef = useRef(false);
@@ -44,9 +34,7 @@ export default function PdfVirtualViewer({
   } | null>(null);
   const fallbackTargetPageNum = targetPageNum ?? activeHits?.[0]?.pageNum;
   const firstPageWidth = useMemo(() => {
-    const firstPage =
-      meta.pageSizeList.find((item) => item.pageNum === 1) ??
-      meta.pageSizeList[0];
+    const firstPage = meta.pageSizeList.find(item => item.pageNum === 1) ?? meta.pageSizeList[0];
     return firstPage?.width ?? 0;
   }, [meta.pageSizeList]);
 
@@ -96,22 +84,19 @@ export default function PdfVirtualViewer({
   }, [firstPageWidth, scale, setScale, viewerWidth]);
 
   // 回填单页真实高度，帮助虚拟列表逐步修正估算尺寸。
-  const handlePageMeasured = useCallback(
-    (pageNum: number, _width: number, height: number) => {
-      setMeasuredPageHeights((currentHeights) => {
-        const previousHeight = currentHeights[pageNum];
-        if (previousHeight && Math.abs(previousHeight - height) < 0.5) {
-          return currentHeights;
-        }
+  const handlePageMeasured = useCallback((pageNum: number, _width: number, height: number) => {
+    setMeasuredPageHeights(currentHeights => {
+      const previousHeight = currentHeights[pageNum];
+      if (previousHeight && Math.abs(previousHeight - height) < 0.5) {
+        return currentHeights;
+      }
 
-        return {
-          ...currentHeights,
-          [pageNum]: height,
-        };
-      });
-    },
-    [],
-  );
+      return {
+        ...currentHeights,
+        [pageNum]: height,
+      };
+    });
+  }, []);
 
   const rowVirtualizer = usePdfVirtualizer({
     parentRef,
@@ -131,11 +116,7 @@ export default function PdfVirtualViewer({
     pageSet.add(anchorPage);
 
     for (const activeHit of activeHits ?? []) {
-      for (
-        let page = activeHit.pageNum - 2;
-        page <= activeHit.pageNum + 2;
-        page += 1
-      ) {
+      for (let page = activeHit.pageNum - 2; page <= activeHit.pageNum + 2; page += 1) {
         if (page >= 1 && page <= meta.totalPages) {
           pageSet.add(page);
         }
@@ -170,12 +151,10 @@ export default function PdfVirtualViewer({
 
     const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
     const currentItem =
-      [...virtualItems]
-        .reverse()
-        .find((item) => item.start <= scrollOffset + 1) ?? virtualItems[0];
+      [...virtualItems].reverse().find(item => item.start <= scrollOffset + 1) ?? virtualItems[0];
     const nextCurrentPage = currentItem.index + 1;
-    setCurrentPage((previousPage) =>
-      previousPage === nextCurrentPage ? previousPage : nextCurrentPage,
+    setCurrentPage(previousPage =>
+      previousPage === nextCurrentPage ? previousPage : nextCurrentPage
     );
   }, [rowVirtualizer.scrollOffset, virtualItems]);
 
@@ -214,10 +193,10 @@ export default function PdfVirtualViewer({
 
       const targetVirtualItem = rowVirtualizer
         .getVirtualItems()
-        .find((item) => item.index === anchor.pageNum - 1);
+        .find(item => item.index === anchor.pageNum - 1);
       if (!targetVirtualItem) {
         rowVirtualizer.scrollToIndex(Math.max(0, anchor.pageNum - 1), {
-          align: "start",
+          align: 'start',
         });
         return false;
       }
@@ -226,16 +205,16 @@ export default function PdfVirtualViewer({
       const highlightCenterOffset = anchor.rect.top + anchor.rect.height / 2;
       const nextScrollTop = Math.max(
         0,
-        targetVirtualItem.start + highlightCenterOffset - viewportAnchorTop,
+        targetVirtualItem.start + highlightCenterOffset - viewportAnchorTop
       );
 
       if (Math.abs(scrollElement.scrollTop - nextScrollTop) > 2) {
-        scrollElement.scrollTo({ top: nextScrollTop, behavior: "auto" });
+        scrollElement.scrollTo({ top: nextScrollTop, behavior: 'auto' });
       }
 
       return true;
     },
-    [rowVirtualizer],
+    [rowVirtualizer]
   );
 
   useEffect(() => {
@@ -287,7 +266,7 @@ export default function PdfVirtualViewer({
         pageNum,
         rect,
       };
-      setHighlightAlignVersion((currentVersion) => currentVersion + 1);
+      setHighlightAlignVersion(currentVersion => currentVersion + 1);
 
       const aligned = alignHighlightAnchor({
         pageNum,
@@ -299,7 +278,7 @@ export default function PdfVirtualViewer({
         currentHighlightAnchorRef.current = null;
       }
     },
-    [alignHighlightAnchor, fallbackTargetPageNum, pdfId, scale],
+    [alignHighlightAnchor, fallbackTargetPageNum, pdfId, scale]
   );
 
   return (
@@ -309,20 +288,19 @@ export default function PdfVirtualViewer({
           <Alert
             type="error"
             showIcon
-            message={getRequestErrorMessage(error, "加载 PDF 文件失败")}
+            message={getRequestErrorMessage(error, '加载 PDF 文件失败')}
           />
         ) : null}
         <div
           style={{
             height: rowVirtualizer.getTotalSize(),
-            position: "relative",
+            position: 'relative',
           }}
         >
-          {virtualItems.map((virtualItem) => {
+          {virtualItems.map(virtualItem => {
             const pageNum = virtualItem.index + 1;
             const pageMeta =
-              meta.pageSizeList.find((item) => item.pageNum === pageNum) ??
-              meta.pageSizeList[0];
+              meta.pageSizeList.find(item => item.pageNum === pageNum) ?? meta.pageSizeList[0];
             const pageRawWidth = pageMeta?.width ?? firstPageWidth ?? 800;
             const pageRawHeight = pageMeta?.height ?? pageMeta?.width ?? 842;
             const pageWidth = Math.max(1, Math.round(pageRawWidth * scale));
